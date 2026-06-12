@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: ""
+title: CLI AI 智能体与技能编排引擎
+scope:
+    - package.json
+    - tsconfig.json
+    - .gitignore
+    - pnpm-lock.yaml
+    - 3-day-tokyo-itinerary.md
+    - bin/
+    - src/
+    - .env
+source_files: []
+depends_on: []
+related_to: []

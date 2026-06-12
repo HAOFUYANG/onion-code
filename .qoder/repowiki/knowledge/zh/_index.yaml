@@ -1,0 +1,22 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: Q0DeR-MaG1C-BrAnCh-Fo2-NoN-GiT-Or-No-C0MmIt
+exported_at: "2026-06-12T08:14:59Z"
+modules:
+    "":
+        dir_name: CLI AI 智能体与技能编排引擎
+        title: CLI AI 智能体与技能编排引擎
+        scope:
+            - package.json
+            - tsconfig.json
+            - .gitignore
+            - pnpm-lock.yaml
+            - 3-day-tokyo-itinerary.md
+            - bin/
+            - src/
+            - .env
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
