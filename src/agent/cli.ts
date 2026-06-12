@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import * as readline from "readline";
 import { runAgentStream } from "./agent";
+import { brand, status, welcomeBanner } from "./style";
 import pkg from "../../package.json";
 
 const program = new Command();
@@ -45,13 +46,13 @@ program
   )
   .action(async (message: string[]) => {
     const input = message.join(" ");
-    process.stdout.write("\nonion: ");
+    process.stdout.write(`\n${brand.onion}: `);
     try {
       await runAgentStream(input, (token) => process.stdout.write(token));
       process.stdout.write("\n");
     } catch (err) {
       process.stdout.write("\n");
-      console.error(`⚠️ ${formatError(err)}\n`);
+      console.error(status.error(formatError(err as Error)) + "\n");
       process.exit(1);
     }
   });
@@ -86,13 +87,13 @@ async function startInteractiveChat() {
     const onData = (data: Buffer) => {
       if (data[0] === 0x1b && !abortController.signal.aborted) {
         abortController.abort();
-        process.stdout.write("\n\n  [已停止]\n\n");
+        process.stdout.write(status.stopped);
       }
     };
     stdin.on("data", onData);
 
     try {
-      process.stdout.write("\nonion: ");
+      process.stdout.write(`\n${brand.onion}: `);
       await runAgentStream(
         userInput,
         (token: string) => process.stdout.write(token),
@@ -106,20 +107,20 @@ async function startInteractiveChat() {
     }
   }
 
-  console.log('=== onionCode 聊天控制台 (输入 "exit" 退出) ===\n');
+  console.log(welcomeBanner(pkg.version));
 
   while (true) {
-    const userInput = await prompt("You: ");
+    const userInput = await prompt(brand.prompt);
     if (!userInput.trim()) continue;
     if (userInput.toLowerCase() === "exit") {
-      console.log("再见！");
+      console.log(status.bye);
       rl.close();
       break;
     }
     try {
       await chat(userInput);
     } catch (err) {
-      console.error(`⚠️ ${formatError(err)}\n`);
+      console.error(status.error(formatError(err as Error)) + "\n");
     }
   }
 }

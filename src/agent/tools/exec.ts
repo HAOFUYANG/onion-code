@@ -2,6 +2,7 @@ import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { execSync } from "child_process";
 import { hasDangerousApi } from "./security";
+import { toolLog } from "../style";
 
 // ── 第 1 层：危险命令名黑名单 ──
 const DANGEROUS_COMMANDS = new Set([
@@ -115,7 +116,7 @@ export const execTool = tool(
         encoding: "utf-8",
         maxBuffer: 1024 * 1024,
       });
-      console.log(`\n[Tool] exec called: "${command}"`);
+      console.log(toolLog("exec", command));
       return output || "(command completed with no output)";
     } catch (err: any) {
       // execSync 抛出时可能带有 stdout/stderr 属性

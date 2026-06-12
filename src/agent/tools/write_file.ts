@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as fs from "fs";
 import * as path from "path";
 import { hasDangerousApi } from "./security";
+import { toolLog } from "../style";
 
 export const writeFileTool = tool(
   async ({ filename, content }: { filename: string; content: string }) => {
@@ -34,7 +35,7 @@ export const writeFileTool = tool(
 
     try {
       fs.writeFileSync(resolved, content, "utf-8");
-      console.log(`\n[Tool] write_file called: "${filename}"`);
+      console.log(toolLog("write_file", filename));
       return `Successfully wrote to "${filename}".`;
     } catch (err: any) {
       return `Error writing file: ${err.message}`;

@@ -1,9 +1,10 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import { toolLog } from "../style";
 
 export const searchTool = tool(
   async ({ query }: { query: string }) => {
-    console.log(`\n[Tool] search called: "${query}"`);
+    console.log(toolLog("search", query));
 
     if (
       query.toLowerCase().includes("sf") ||

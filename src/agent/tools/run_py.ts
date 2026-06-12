@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { hasDangerousApi } from "./security";
+import { toolLogLines } from "../style";
 
 function isPython3Available(): boolean {
   try {
@@ -50,7 +51,7 @@ export const runPyTool = tool(
         maxBuffer: 1024 * 512,
       });
 
-      console.log(`\n[Tool] run_py called (${code.split("\n").length} lines)`);
+      console.log(toolLogLines("run_py", code.split("\n").length));
       return output || "(code completed with no output)";
     } catch (err: any) {
       if (err.stderr) {

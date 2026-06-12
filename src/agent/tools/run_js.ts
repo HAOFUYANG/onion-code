@@ -5,6 +5,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { hasDangerousApi } from "./security";
+import { toolLogLines } from "../style";
 
 function isNodeAvailable(): boolean {
   try {
@@ -50,7 +51,7 @@ export const runJsTool = tool(
         maxBuffer: 1024 * 512,
       });
 
-      console.log(`\n[Tool] run_js called (${code.split("\n").length} lines)`);
+      console.log(toolLogLines("run_js", code.split("\n").length));
       return output || "(code completed with no output)";
     } catch (err: any) {
       if (err.stderr) {

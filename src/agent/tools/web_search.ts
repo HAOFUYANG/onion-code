@@ -1,6 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
 import { TavilySearch } from "@langchain/tavily";
+import { toolLog } from "../style";
 
 function getTavilyClient(): TavilySearch | null {
   try {
@@ -15,7 +16,7 @@ function getTavilyClient(): TavilySearch | null {
 
 export const webSearchTool = tool(
   async ({ query }: { query: string }) => {
-    console.log(`\n[Tool] web_search called: "${query}"`);
+    console.log(toolLog("web_search", query));
 
     const client = getTavilyClient();
     if (!client) {
