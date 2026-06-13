@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import * as readline from "readline";
 import { runAgentStream } from "./agent";
-import { brand, status, welcomeBanner } from "./style";
+import { brand, status, splashScreen } from "./style";
 import pkg from "../../package.json";
 
 const program = new Command();
@@ -115,7 +115,15 @@ async function startInteractiveChat() {
     }
   }
 
-  console.log(welcomeBanner(pkg.version));
+  console.log(
+    splashScreen({
+      name: pkg.name,
+      version: pkg.version,
+      description: (pkg as any).description,
+      author: (pkg as any).author ?? "unknown",
+      docs: (pkg as any).docs ?? "",
+    }),
+  );
 
   while (true) {
     const userInput = await prompt(brand.prompt);

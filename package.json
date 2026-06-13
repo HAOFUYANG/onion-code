@@ -2,6 +2,8 @@
   "name": "onion-code",
   "version": "1.0.0",
   "description": "CLI AI agent with tool calling (like OpenCode)",
+  "author": "haofuyang",
+  "docs": "https://github.com/haofuyang/onion-code",
   "type": "commonjs",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -15,20 +17,23 @@
     "test": "vitest run"
   },
   "keywords": [],
-  "author": "",
   "license": "ISC",
   "dependencies": {
     "@langchain/core": "^1.1.48",
     "@langchain/langgraph": "^1.3.7",
     "@langchain/openai": "^1.4.7",
     "@langchain/tavily": "^1.2.0",
+    "boxen": "^8.0.1",
     "chalk": "^4.1.2",
     "commander": "^15.0.0",
     "dotenv": "^17.4.2",
+    "figlet": "^1.11.0",
     "langchain": "^1.4.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/boxen": "^3.0.5",
+    "@types/figlet": "^1.7.0",
     "@types/node": "^25.9.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",

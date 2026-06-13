@@ -1,4 +1,6 @@
 import chalk from "chalk";
+import figlet from "figlet";
+import boxen from "boxen";
 
 // ── 品牌标识 ──────────────────────────────────────────────
 export const brand = {
@@ -40,7 +42,51 @@ export const status = {
   error: (msg: string) => chalk.red(`⚠ ${msg}`),
 };
 
-// ── 欢迎横幅 ──────────────────────────────────────────────
+// ── 启动画面 ────────────────────────────────────────────────
+export interface SplashOptions {
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  docs: string;
+}
+
+export function splashScreen(opts: SplashOptions): string {
+  // 大字名称：figlet 渲染，品红色
+  const bigName = chalk.bold.magenta(
+    figlet.textSync(opts.name, {
+      font: "Standard",
+      horizontalLayout: "fitted",
+    }),
+  );
+
+  // 信息框内容
+  const boxContent = [
+    `${chalk.dim("version")}      ${chalk.cyan(opts.version)}`,
+    `${chalk.dim("description")}  ${chalk.white(opts.description)}`,
+    `${chalk.dim("author")}       ${chalk.green(opts.author)}`,
+    `${chalk.dim("docs")}         ${chalk.blue.underline(opts.docs)}`,
+  ].join("\n");
+
+  const infoBox = boxen(boxContent, {
+    padding: { top: 0, bottom: 0, left: 1, right: 1 },
+    margin: { top: 0, bottom: 0, left: 0, right: 0 },
+    borderStyle: "round",
+    borderColor: "magenta",
+  } as any);
+
+  // 使用说明
+  const usage = [
+    chalk.dim("─".repeat(48)),
+    `  ${chalk.yellow("▶")} ${chalk.dim("ESC")}   取消当前 AI 请求`,
+    `  ${chalk.yellow("▶")} ${chalk.dim("exit")}  退出程序`,
+    chalk.dim("─".repeat(48)),
+  ].join("\n");
+
+  return `\n${bigName}\n${infoBox}\n${usage}\n`;
+}
+
+// ── 欢迎横幅（保留，少用场景）──────────────────────────────────────
 export function welcomeBanner(version: string): string {
   const title = chalk.bold.magenta("🧅 onionCode");
   const ver = chalk.dim(`v${version}`);

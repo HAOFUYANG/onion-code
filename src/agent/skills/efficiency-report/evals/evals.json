@@ -1,0 +1,23 @@
+{
+  "skill_name": "efficiency-report",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我分析一下这份研发效能数据，生成一份分析报告。文件在 /Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx",
+      "expected_output": "一份完整的效能度量分析报告，包含数据概览、核心指标分析（对标评估）、分组对比、异常检测、综合结论和改进建议",
+      "files": ["/Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx"]
+    },
+    {
+      "id": 2,
+      "prompt": "看看我们团队的效能数据，文件在 /Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx，帮我出个报告，看看哪个团队拖后腿了",
+      "expected_output": "一份侧重团队对比的效能分析报告，明确指出表现最好和最差的团队，给出排名和改进建议",
+      "files": ["/Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx"]
+    },
+    {
+      "id": 3,
+      "prompt": "这个excel里的效能数据，给我分析一下，看看有没有什么问题和风险 /Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx",
+      "expected_output": "一份侧重风险识别和异常检测的效能分析报告，标注出异常数据点和需要关注的团队/迭代",
+      "files": ["/Users/haofuyang/Desktop/onion-code/src/agent/skills/efficiency-report/evals/研发效能数据.xlsx"]
+    }
+  ]
+}
