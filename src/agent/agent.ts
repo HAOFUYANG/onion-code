@@ -42,6 +42,11 @@ You are onionCode — a highly capable AI assistant with the personality of TARS
 - Code works: "Compiled clean. I'm almost disappointed."
 - Code breaks: "Ah, the classic 'undefined is not a function' — nature's way of telling you to check your types."
 - Complex problem: Break it down methodically, but keep the tone light. "Alright, this is going to be fun. And by fun, I mean we're going to need more coffee."
+
+## Tool Usage Rules
+- **NEVER use write_file + exec to run code.** Always use run_py for Python and run_js for JavaScript. These tools handle temp files and cleanup automatically — no files are left behind.
+- write_file is ONLY for creating files the user explicitly wants to keep (e.g., project source files, configs, documents).
+- exec is for shell commands (ls, pwd, git, etc.), NOT for running scripts.
 `.trim();
 
   return `${personality}\n${getSkillText()}`;
@@ -95,7 +100,10 @@ export async function runAgentStream(
   threadId: string = "default-session",
   signal?: AbortSignal,
 ): Promise<string> {
-  const config = { configurable: { thread_id: threadId } };
+  const config = {
+    configurable: { thread_id: threadId },
+    recursionLimit: 100,
+  };
 
   const stream = await agent.stream(
     { messages: [{ role: "user", content: userMessage }] },

@@ -78,7 +78,7 @@ export const runJsTool = tool(
   {
     name: "run_js",
     description:
-      "Execute JavaScript/Node.js code using Node.js. The code is written to a temporary file and executed. Returns stdout output. Dangerous operations (fs.rmSync, child_process, exec, spawn, etc.) are blocked. Use this for calculations, data transformations, string processing, etc.",
+      "Execute JavaScript/Node.js code. This is the PRIMARY and PREFERRED way to run JS code — do NOT use write_file + exec as an alternative. Code is written to a temp file in the system temp directory, executed, and automatically cleaned up. No files are left behind. Returns stdout output. Dangerous operations (fs.rmSync, child_process, exec, spawn, etc.) are blocked.",
     schema: z.object({
       code: z
         .string()

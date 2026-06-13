@@ -30,6 +30,14 @@ function formatError(err: unknown): string {
     return "API 额度不足（429），请检查账户余额。";
   }
 
+  // LangGraph 递归限制
+  if (msg.includes("Recursion limit")) {
+    return (
+      "Agent 执行步数超出限制（recursionLimit）。\n" +
+      "        任务可能过于复杂，可尝试拆分为多个小步骤分次执行。"
+    );
+  }
+
   // 网络超时
   if (msg.includes("ETIMEDOUT") || msg.includes("timeout")) {
     return "请求超时，请检查网络连接后重试。";

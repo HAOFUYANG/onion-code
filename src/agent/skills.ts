@@ -119,15 +119,16 @@ export function loadSkill(name: string): string | null {
 
 /**
  * 将所有 skills 的 name 和 description 拼接成一段文本，用于注入 system prompt。
- * 格式：
- *   ## 可用 Skills
- *   - **skill-name**: description
+ * 包含 skills 目录路径，引导 AI 知道新 skill 应该放在哪里。
  */
 export function getSkillText(): string {
+  const skillsDir = getSkillsDir();
   const skills = discoverSkills();
   if (skills.length === 0) return "";
 
   const lines = ["\n## 可用 Skills\n"];
+  lines.push(`Skills 目录: \`${skillsDir}\``);
+  lines.push("新增 skill 时，请在此目录下创建子目录并添加 SKILL.md 文件。\n");
   for (const skill of skills) {
     lines.push(`- **${skill.name}**: ${skill.description}`);
   }
