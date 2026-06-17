@@ -1,6 +1,6 @@
 import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
-import { MemorySaver } from "@langchain/langgraph";
+import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
 import {
   searchTool,
   readFileTool,
@@ -13,6 +13,7 @@ import {
   loadSkillTool,
 } from "./tools";
 import * as path from "path";
+import * as fs from "fs";
 import * as dotenv from "dotenv";
 import { getSkillText } from "./skills";
 
@@ -55,8 +56,12 @@ You are onionCode — a highly capable AI assistant with the personality of TARS
 // 以项目根目录（而非 cwd）为基准加载 .env
 dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
-// ── 内存持久化（Checkpointer）────────────────────────────
-const checkpointer = new MemorySaver();
+// ── SQLite 持久化（Checkpointer）────────────────────────────
+const checkpointDir = path.resolve(process.cwd(), ".data");
+fs.mkdirSync(checkpointDir, { recursive: true });
+const checkpointer = SqliteSaver.fromConnString(
+  path.join(checkpointDir, "checkpointer.db"),
+);
 
 // ── 模型 ──────────────────────────────────────────────────
 const model = new ChatOpenAI({
