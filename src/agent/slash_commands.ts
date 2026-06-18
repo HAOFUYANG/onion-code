@@ -4,13 +4,18 @@ import { openConfigDialog } from "./config";
 export interface SlashCommandContext {
   newThread: () => void;
   showHelp: () => void;
+  showSessions: () => void;
+  rewindThread: (threadId: string) => void;
 }
 
 export interface SlashCommand {
   name: string;
   aliases?: string[];
   description: string;
-  handler: (ctx: SlashCommandContext) => Promise<"exit" | void> | "exit" | void;
+  handler: (
+    ctx: SlashCommandContext,
+    args?: string,
+  ) => Promise<"exit" | void> | "exit" | void;
 }
 
 export const slashCommands: SlashCommand[] = [
@@ -19,6 +24,28 @@ export const slashCommands: SlashCommand[] = [
     aliases: ["conf"],
     description: "打开配置中心",
     handler: async () => openConfigDialog(),
+  },
+  {
+    name: "rewind",
+    aliases: ["rw"],
+    description: "恢复某条聊天记录（用法：/rewind <thread_id>）",
+    handler: (ctx, args) => {
+      if (!args?.trim()) {
+        console.log(
+          chalk.yellow(
+            "\n⚠ 用法：/rewind <thread_id>  示例：/rewind /sessions 查看 ID\n",
+          ),
+        );
+        return;
+      }
+      ctx.rewindThread(args.trim());
+    },
+  },
+  {
+    name: "sessions",
+    aliases: ["sess"],
+    description: "查看最近 20 条聊天记录",
+    handler: (ctx) => ctx.showSessions(),
   },
   {
     name: "new",

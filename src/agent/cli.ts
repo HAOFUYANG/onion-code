@@ -1,8 +1,11 @@
+import { randomUUID } from "crypto";
+import chalk from "chalk";
 import { Command } from "commander";
 import { runAgentStream } from "./agent";
 import { readUserInput } from "./input";
 import { slashCommands, type SlashCommandContext } from "./slash_commands";
 import { brand, status, splashScreen } from "./style";
+import { querySessions, renderSessionsTable, threadExists } from "./sessions";
 import pkg from "../../package.json";
 
 const program = new Command();
@@ -74,12 +77,32 @@ program.parse(process.argv);
 // ────────────────────────────────────────────────────────────
 
 async function startInteractiveChat() {
-  let threadId = "user-session-1";
+  let threadId: string = randomUUID();
 
   const slashContext: SlashCommandContext = {
     newThread: () => {
-      threadId = `user-session-${Date.now().toString(36)}`;
+      threadId = randomUUID();
       console.log(`\n✅ 已新建会话：${threadId}\n`);
+    },
+    showSessions: () => {
+      const sessions = querySessions(20);
+      console.log(renderSessionsTable(sessions));
+    },
+    rewindThread: (targetId: string) => {
+      if (!threadExists(targetId)) {
+        console.log(
+          chalk.red(
+            `\n❌ 找不到该会话：${targetId}\n   请用 /sessions 查看已有的 thread_id。\n`,
+          ),
+        );
+        return;
+      }
+      threadId = targetId;
+      console.log(
+        chalk.green(
+          `\n⏪ 已切换到历史会话：${threadId}\n   直接输入内容即可继续聊天。\n`,
+        ),
+      );
     },
     showHelp: () => {
       console.log("\n可用 Slash Commands：");
@@ -141,7 +164,7 @@ async function startInteractiveChat() {
 
     if (input.type === "command") {
       try {
-        const result = await input.command.handler(slashContext);
+        const result = await input.command.handler(slashContext, input.args);
         if (result === "exit") {
           console.log(status.bye);
           break;

@@ -1,13 +1,12 @@
 schema_version: 1
 module_path: ""
-title: CLI AI 智能体与技能编排引擎
+title: TARS 风格 CLI AI Agent
 scope:
-    - package.json
-    - tsconfig.json
     - .gitignore
+    - package.json
     - pnpm-lock.yaml
-    - 3-day-tokyo-itinerary.md
-    - bin/
+    - skills-lock.json
+    - tsconfig.json
     - src/
     - .env
 source_files: []

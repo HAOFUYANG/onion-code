@@ -9,7 +9,7 @@ import {
 
 export type UserInputResult =
   | { type: "message"; text: string }
-  | { type: "command"; command: SlashCommand }
+  | { type: "command"; command: SlashCommand; args?: string }
   | { type: "exit" };
 
 interface InputState {
@@ -35,7 +35,9 @@ function fallbackPrompt(): Promise<UserInputResult> {
 
       const matches = answer.startsWith("/") ? matchSlashCommands(answer) : [];
       if (answer.startsWith("/") && matches.length > 0) {
-        resolve({ type: "command", command: matches[0] });
+        const parts = answer.trim().split(/\s+/);
+        const args = parts.slice(1).join(" ") || undefined;
+        resolve({ type: "command", command: matches[0], args });
         return;
       }
 
@@ -185,9 +187,13 @@ export function readUserInput(): Promise<UserInputResult> {
 
         const suggestions = getSuggestions(state);
         if (state.buffer.startsWith("/") && suggestions.length > 0) {
+          // 解析命令名后面的参数（如 /rewind <thread_id>）
+          const parts = state.buffer.trim().split(/\s+/);
+          const args = parts.slice(1).join(" ") || undefined;
           finish({
             type: "command",
             command: suggestions[state.selectedIndex],
+            args,
           });
           return;
         }

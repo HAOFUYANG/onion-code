@@ -75,7 +75,7 @@ export async function openConfigDialog(): Promise<void> {
 
   const { section } = await inquirer.prompt<{ section: string }>([
     {
-      type: "list",
+      type: "select",
       name: "section",
       message: "选择要配置的模块",
       choices: [
