@@ -1,6 +1,7 @@
 import { Command } from "commander";
-import * as readline from "readline";
 import { runAgentStream } from "./agent";
+import { readUserInput } from "./input";
+import { slashCommands, type SlashCommandContext } from "./slash_commands";
 import { brand, status, splashScreen } from "./style";
 import pkg from "../../package.json";
 
@@ -73,25 +74,30 @@ program.parse(process.argv);
 // ────────────────────────────────────────────────────────────
 
 async function startInteractiveChat() {
-  const THREAD_ID = "user-session-1";
+  let threadId = "user-session-1";
 
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  function prompt(question: string): Promise<string> {
-    return new Promise((resolve) => rl.question(question, resolve));
-  }
+  const slashContext: SlashCommandContext = {
+    newThread: () => {
+      threadId = `user-session-${Date.now().toString(36)}`;
+      console.log(`\n✅ 已新建会话：${threadId}\n`);
+    },
+    showHelp: () => {
+      console.log("\n可用 Slash Commands：");
+      for (const command of slashCommands) {
+        console.log(`  /${command.name.padEnd(8)} ${command.description}`);
+      }
+      console.log("");
+    },
+  };
 
   async function chat(userInput: string): Promise<void> {
-    rl.pause();
-
     const abortController = new AbortController();
     const stdin = process.stdin;
+    const wasRaw = stdin.isTTY ? stdin.isRaw : false;
 
     // 监听 ESC 键（ASCII 27 = 0x1b）
     stdin.resume();
+    if (stdin.isTTY) stdin.setRawMode(true);
     const onData = (data: Buffer) => {
       if (data[0] === 0x1b && !abortController.signal.aborted) {
         abortController.abort();
@@ -105,13 +111,13 @@ async function startInteractiveChat() {
       await runAgentStream(
         userInput,
         (token: string) => process.stdout.write(token),
-        THREAD_ID,
+        threadId,
         abortController.signal,
       );
       process.stdout.write("\n\n");
     } finally {
       stdin.removeListener("data", onData);
-      rl.resume();
+      if (stdin.isTTY) stdin.setRawMode(wasRaw);
     }
   }
 
@@ -126,15 +132,29 @@ async function startInteractiveChat() {
   );
 
   while (true) {
-    const userInput = await prompt(brand.prompt);
-    if (!userInput.trim()) continue;
-    if (userInput.toLowerCase() === "exit") {
+    const input = await readUserInput();
+
+    if (input.type === "exit") {
       console.log(status.bye);
-      rl.close();
       break;
     }
+
+    if (input.type === "command") {
+      try {
+        const result = await input.command.handler(slashContext);
+        if (result === "exit") {
+          console.log(status.bye);
+          break;
+        }
+      } catch (err) {
+        console.error(status.error(formatError(err as Error)) + "\n");
+      }
+      continue;
+    }
+
+    if (!input.text.trim()) continue;
     try {
-      await chat(userInput);
+      await chat(input.text);
     } catch (err) {
       console.error(status.error(formatError(err as Error)) + "\n");
     }

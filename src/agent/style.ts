@@ -78,6 +78,7 @@ export function splashScreen(opts: SplashOptions): string {
   // 使用说明
   const usage = [
     chalk.dim("─".repeat(48)),
+    `  ${chalk.yellow("▶")} ${chalk.dim("/")}     打开 Slash 命令面板`,
     `  ${chalk.yellow("▶")} ${chalk.dim("ESC")}   取消当前 AI 请求`,
     `  ${chalk.yellow("▶")} ${chalk.dim("exit")}  退出程序`,
     chalk.dim("─".repeat(48)),
