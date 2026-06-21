@@ -1,9 +1,8 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as fs from "fs";
-import * as path from "path";
-import { hasDangerousApi } from "./security";
-import { toolLog } from "../style";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { hasDangerousApi } from "./security.js";
 
 export const writeFileTool = tool(
   async ({ filename, content }: { filename: string; content: string }) => {
@@ -35,7 +34,6 @@ export const writeFileTool = tool(
 
     try {
       fs.writeFileSync(resolved, content, "utf-8");
-      console.log(toolLog("write_file", filename));
       return `Successfully wrote to "${filename}".`;
     } catch (err: any) {
       return `Error writing file: ${err.message}`;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { readFileTool } from "./read_file";
+import { readFileTool } from "./read_file.js";
 
 describe("readFileTool", () => {
   it("should read an existing file", async () => {

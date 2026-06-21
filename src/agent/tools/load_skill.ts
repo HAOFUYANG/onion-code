@@ -1,7 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { loadSkill, discoverSkills } from "../skills";
-import { toolLog } from "../style";
+import { loadSkill, discoverSkills } from "../skills.js";
 
 export const loadSkillTool = tool(
   async ({ skillName }: { skillName: string }) => {
@@ -13,8 +12,6 @@ export const loadSkillTool = tool(
       const available = allSkills.map((s) => `"${s.name}"`).join(", ");
       return `Error: Skill "${skillName}" not found. Available skills: ${available || "(none)"}`;
     }
-
-    console.log(toolLog("load_skill", skillName));
 
     const content = loadSkill(skillName);
     if (!content) {

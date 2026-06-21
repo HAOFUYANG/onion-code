@@ -1,6 +1,5 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { toolLog } from "../style";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_RESPONSE_SIZE = 1024 * 512; // 512KB
@@ -32,8 +31,6 @@ export const webFetchTool = tool(
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      console.log(toolLog("web_fetch", url));
-
       const response = await fetch(url, {
         signal: controller.signal,
         headers: {

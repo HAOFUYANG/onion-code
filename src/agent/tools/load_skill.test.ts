@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { loadSkillTool } from "./load_skill";
+import { loadSkillTool } from "./load_skill.js";
 
 describe("loadSkillTool", () => {
   // ── 正常加载已有 skill ──

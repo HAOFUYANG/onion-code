@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { execTool } from "./exec";
-import * as path from "path";
+import { execTool } from "./exec.js";
+import * as path from "node:path";
 
 describe("execTool", () => {
   // ── 正常功能 ──

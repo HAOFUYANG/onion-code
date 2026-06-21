@@ -1,13 +1,12 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { spawnSync } from "child_process";
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { hasDangerousApi } from "./security";
-import { toolLogLines } from "../style";
-import { loadConfig } from "../config";
-import { getPythonForCode } from "../python_env";
+import { spawnSync } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { hasDangerousApi } from "./security.js";
+import { loadConfig } from "../config.js";
+import { getPythonForCode } from "../python_env.js";
 
 export const runPyTool = tool(
   async ({ code }: { code: string }) => {
@@ -58,7 +57,6 @@ export const runPyTool = tool(
         return `Error: ${result.stderr || result.stdout || `Python exited with code ${result.status}`}`;
       }
 
-      console.log(toolLogLines("run_py", code.split("\n").length));
       return result.stdout || "(code completed with no output)";
     } catch (err: any) {
       if (err.stderr) {

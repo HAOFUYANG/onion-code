@@ -11,11 +11,14 @@ import {
   webSearchTool,
   webFetchTool,
   loadSkillTool,
-} from "./tools";
-import * as path from "path";
-import * as fs from "fs";
-import * as dotenv from "dotenv";
-import { getSkillText } from "./skills";
+} from "./tools.js";
+import path from "node:path";
+import fs from "node:fs";
+import dotenv from "dotenv";
+import { fileURLToPath } from "node:url";
+import { getSkillText } from "./skills.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── TARS 风格 System Prompt ───────────────────────────────
 function buildSystemPrompt(): string {
@@ -97,6 +100,7 @@ export const agent = createAgent({
  * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
  * @param {string} threadId    - 会话 ID，相同 ID 自动续上历史记录
  * @param {AbortSignal} [signal] - 可选的取消信号，可用于 ESC 中断
+ * @param {Function} [onToolCall] - 工具调用回调 (toolName: string, args: Record<string, any>) => void
  * @returns {Promise<string>}  完整的 AI 回复文本
  */
 export async function runAgentStream(
@@ -104,6 +108,7 @@ export async function runAgentStream(
   onToken: (token: string) => void,
   threadId: string = "default-session",
   signal?: AbortSignal,
+  onToolCall?: (toolName: string, args: Record<string, any>) => void,
 ): Promise<string> {
   const config = {
     configurable: { thread_id: threadId },
@@ -116,6 +121,8 @@ export async function runAgentStream(
   );
 
   let fullResponse = "";
+  // 累积 tool_call_chunks，因为参数可能分多个 chunk 到达
+  const toolCallAccumulator = new Map<string, { name: string; args: string }>();
 
   for await (const chunk of stream as any) {
     if (signal?.aborted) break;
@@ -131,10 +138,42 @@ export async function runAgentStream(
       (message as any).content ?? (message as any).kwargs?.content ?? "";
     const toolCallChunks = (message as any).tool_call_chunks ?? [];
 
-    if (!content || toolCallChunks.length > 0) continue;
+    if (content) {
+      onToken(content);
+      fullResponse += content;
+    }
 
-    onToken(content);
-    fullResponse += content;
+    // 处理 tool_call chunks：累积工具名和参数
+    if (toolCallChunks.length > 0 && onToolCall) {
+      for (const tc of toolCallChunks) {
+        const index = tc.index ?? 0;
+        const existing = toolCallAccumulator.get(String(index));
+        const name = tc.name ?? existing?.name ?? "";
+        const args = (existing?.args ?? "") + (tc.args ?? "");
+        toolCallAccumulator.set(String(index), { name, args });
+
+        // 当工具名和参数都完整时（通常 name 在第一个 chunk，args 逐步累积）
+        // 在这里不立即回调，等 tool 执行完成后由后续 chunk 触发
+      }
+    }
+
+    // 检测 tool 消息（工具执行完成），此时触发 onToolCall
+    if (typeof message._getType === "function" && message._getType() === "tool") {
+      if (onToolCall && toolCallAccumulator.size > 0) {
+        for (const [, { name, args }] of toolCallAccumulator) {
+          if (name) {
+            let parsedArgs: Record<string, any> = {};
+            try {
+              parsedArgs = args ? JSON.parse(args) : {};
+            } catch {
+              // args 可能不完整，跳过解析
+            }
+            onToolCall(name, parsedArgs);
+          }
+        }
+        toolCallAccumulator.clear();
+      }
+    }
   }
 
   return fullResponse;

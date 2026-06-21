@@ -1,11 +1,11 @@
-import * as readline from "readline";
+import * as readline from "node:readline";
 import chalk from "chalk";
-import { brand } from "./style";
+import { brand, inputBorder, formatInputStatus, type InputContext } from "./style.js";
 import {
   formatSlashCommand,
   matchSlashCommands,
   type SlashCommand,
-} from "./slash_commands";
+} from "./slash_commands.js";
 
 export type UserInputResult =
   | { type: "message"; text: string }
@@ -17,6 +17,8 @@ interface InputState {
   selectedIndex: number;
   slashDismissed: boolean;
   renderedLines: number;
+  /** 上一次渲染时面板是否可见，用于判断是否需要全量重绘 */
+  panelVisible: boolean;
 }
 
 function fallbackPrompt(): Promise<UserInputResult> {
@@ -64,33 +66,33 @@ function renderSlashPanel(
   suggestions: SlashCommand[],
   selectedIndex: number,
 ): string {
-  const terminalWidth = process.stdout.columns || 100;
-  const menuWidth = Math.max(48, Math.min(92, terminalWidth - 6));
-  const commandWidth = 16;
+  const terminalWidth = process.stdout.columns || 80;
   const maxVisible = 10;
   const visibleSuggestions = suggestions.slice(0, maxVisible);
 
   if (visibleSuggestions.length === 0) {
-    const empty = padVisible(chalk.dim("  没有匹配的命令"), menuWidth);
-    return `  ${empty}`;
+    return `  ${chalk.dim("没有匹配的命令")}`;
   }
+
+  const maxCmdLen = Math.max(
+    ...visibleSuggestions.map((c) => c.name.length + 1),
+  );
+  const cmdWidth = Math.max(maxCmdLen, 8);
+  const descMaxWidth = Math.max(20, terminalWidth - cmdWidth - 8);
 
   const rows = visibleSuggestions.map((cmd, index) => {
     const selected = index === selectedIndex;
-    const commandText = padVisible(`/${cmd.name}`, commandWidth);
-    const descriptionWidth = menuWidth - commandWidth - 2;
-    const description =
-      cmd.description.length > descriptionWidth
-        ? `${cmd.description.slice(0, Math.max(0, descriptionWidth - 1))}…`
+    const indicator = selected ? chalk.magenta("▸") : " ";
+    const cmdText = padVisible(`/${cmd.name}`, cmdWidth);
+    const desc =
+      cmd.description.length > descMaxWidth
+        ? `${cmd.description.slice(0, Math.max(0, descMaxWidth - 1))}…`
         : cmd.description;
 
-    const row = padVisible(`${commandText}  ${description}`, menuWidth);
-
     if (selected) {
-      return `  ${chalk.bgHex("#f4b183").black(row)}`;
+      return `  ${indicator} ${chalk.bold.cyan(cmdText)} ${chalk.dim(desc)}`;
     }
-
-    return `  ${chalk.bold.white(commandText)}  ${chalk.dim(description)}`;
+    return `  ${indicator} ${chalk.dim(cmdText)} ${chalk.dim(desc)}`;
   });
 
   const footer = `  ${chalk.dim("tab 补全  ↑↓ 选择  enter 执行  esc 关闭")}`;
@@ -104,21 +106,71 @@ function clearPreviousRender(lines: number): void {
   readline.clearScreenDown(process.stdout);
 }
 
-function render(state: InputState): void {
-  clearPreviousRender(state.renderedLines);
-
+/**
+ * 渲染输入区域。
+ *
+ * 光标策略 —— 像前端 input 组件一样：
+ * - 正常打字走「快速路径」：光标已在输入行上，只 clearLine + 重写本行，写完光标自然在内容末尾。
+ * - 面板出现/消失走「全量重绘」：先预留空白行，写完边线+状态后 \x1b[NA 回到空白行写入输入内容。
+ * 全程不手动计算光标列号，光标位置由终端自动维护。
+ */
+function render(state: InputState, ctx?: InputContext): void {
   const suggestions = getSuggestions(state);
-  const inputLine = `${brand.prompt}${state.buffer}`;
   const shouldShowPanel =
     suggestions.length > 0 ||
     (state.buffer.startsWith("/") && !state.slashDismissed);
-  const panel = shouldShowPanel
-    ? `${renderSlashPanel(suggestions, state.selectedIndex)}\n`
-    : "";
-  const output = `${panel}${inputLine}`;
 
-  process.stdout.write(output);
-  state.renderedLines = output.split("\n").length;
+  const prefix = `  ${inputBorder} ${brand.prompt}`;
+  const content = state.buffer
+    ? state.buffer
+    : chalk.dim("输入消息，或 / 查看命令...");
+
+  // ── 快速路径：只需更新输入行内容，光标已在输入行上 ──
+  const layoutChanged = shouldShowPanel !== state.panelVisible;
+  if (state.renderedLines > 0 && !shouldShowPanel && !layoutChanged) {
+    readline.cursorTo(process.stdout, 0);
+    readline.clearLine(process.stdout, 0);
+    process.stdout.write(`${prefix}${content}`);
+    // 光标自然停在 content 末尾 ✓
+    return;
+  }
+
+  // ── 全量重绘：面板出现/消失/首次渲染 ──
+  if (state.renderedLines > 0) {
+    // 光标在输入行上 → 先下移到渲染块末尾
+    readline.moveCursor(process.stdout, 0, 1 + (ctx ? 1 : 0));
+    clearPreviousRender(state.renderedLines);
+  }
+
+  // 1. 面板（输入行上方）
+  let panelLines = 0;
+  if (shouldShowPanel) {
+    const panelStr = renderSlashPanel(suggestions, state.selectedIndex);
+    process.stdout.write(`\r${panelStr}\n`);
+    panelLines = panelStr.split("\n").length;
+  }
+
+  // 2. 预留输入行的空白行
+  process.stdout.write(`\n`);
+
+  // 3. 边线（输入行下方）
+  process.stdout.write(`\r  ${inputBorder}`);
+
+  // 4. 状态行（边线下方）
+  if (ctx) {
+    process.stdout.write(`\n\r    ${formatInputStatus(ctx)}`);
+  }
+
+  // 记录行数
+  state.renderedLines = panelLines + 1 + 1 + (ctx ? 1 : 0);
+  state.panelVisible = shouldShowPanel;
+
+  // 5. 回到预留的空白行，写入输入内容
+  //    状态 + 边线 = 1 或 2 行，\x1b[NA 向上跳 N 行
+  const upLines = 1 + (ctx ? 1 : 0);
+  process.stdout.write(`\x1b[${upLines}A`);
+  process.stdout.write(`\r${prefix}${content}`);
+  // 光标自然停在 content 末尾 ✓
 }
 
 function normalizeSelection(state: InputState): void {
@@ -135,7 +187,7 @@ function normalizeSelection(state: InputState): void {
   }
 }
 
-export function readUserInput(): Promise<UserInputResult> {
+export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return fallbackPrompt();
   }
@@ -144,25 +196,42 @@ export function readUserInput(): Promise<UserInputResult> {
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
 
+  // 切换终端光标为竖线样式（beam cursor），退出时恢复
+  process.stdout.write("\x1b[5 q");
+
   const state: InputState = {
     buffer: "",
     selectedIndex: 0,
     slashDismissed: false,
     renderedLines: 0,
+    panelVisible: false,
   };
 
-  render(state);
+  render(state, ctx);
 
   return new Promise((resolve) => {
     const cleanup = () => {
       process.stdin.off("keypress", onKeypress);
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
+      // 恢复默认块状光标
+      process.stdout.write("\x1b[2 q");
       process.stdout.write("\n");
     };
 
     const finish = (result: UserInputResult) => {
-      clearPreviousRender(state.renderedLines);
-      process.stdout.write(`${brand.prompt}${state.buffer}\n`);
+      // 光标在输入行 buffer 末尾，先移到渲染块底部再清除
+      if (state.renderedLines > 0) {
+        const linesBelow = 1 + (ctx ? 1 : 0);
+        // 如果 buffer 为空，光标在 placeholder 位置，需要先回到 buffer 末尾
+        // 但 finish 时不需要精确位置，只需下移到底部
+        readline.moveCursor(process.stdout, 0, linesBelow);
+        clearPreviousRender(state.renderedLines);
+      }
+      if (state.buffer.trim()) {
+        process.stdout.write(
+          `  ${chalk.magenta("❯")} ${chalk.dim(state.buffer)}\n`,
+        );
+      }
       cleanup();
       resolve(result);
     };
@@ -177,7 +246,7 @@ export function readUserInput(): Promise<UserInputResult> {
         const trimmed = state.buffer.trim();
         if (!trimmed) {
           state.buffer = "";
-          render(state);
+          render(state, ctx);
           return;
         }
         if (trimmed.toLowerCase() === "exit") {
@@ -205,7 +274,7 @@ export function readUserInput(): Promise<UserInputResult> {
       if (key.name === "escape") {
         if (state.buffer.startsWith("/") && !state.slashDismissed) {
           state.slashDismissed = true;
-          render(state);
+          render(state, ctx);
         }
         return;
       }
@@ -214,7 +283,7 @@ export function readUserInput(): Promise<UserInputResult> {
         state.buffer = state.buffer.slice(0, -1);
         state.slashDismissed = false;
         normalizeSelection(state);
-        render(state);
+        render(state, ctx);
         return;
       }
 
@@ -222,20 +291,20 @@ export function readUserInput(): Promise<UserInputResult> {
       if (key.name === "up" && suggestions.length > 0) {
         state.selectedIndex =
           (state.selectedIndex - 1 + suggestions.length) % suggestions.length;
-        render(state);
+        render(state, ctx);
         return;
       }
 
       if (key.name === "down" && suggestions.length > 0) {
         state.selectedIndex = (state.selectedIndex + 1) % suggestions.length;
-        render(state);
+        render(state, ctx);
         return;
       }
 
       if (key.name === "tab" && suggestions.length > 0) {
         state.buffer = formatSlashCommand(suggestions[state.selectedIndex]);
         state.slashDismissed = false;
-        render(state);
+        render(state, ctx);
         return;
       }
 
@@ -243,7 +312,7 @@ export function readUserInput(): Promise<UserInputResult> {
         state.buffer = "";
         state.selectedIndex = 0;
         state.slashDismissed = false;
-        render(state);
+        render(state, ctx);
         return;
       }
 
@@ -251,7 +320,7 @@ export function readUserInput(): Promise<UserInputResult> {
         state.buffer += str;
         state.slashDismissed = false;
         normalizeSelection(state);
-        render(state);
+        render(state, ctx);
       }
     };
 

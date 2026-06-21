@@ -1,8 +1,7 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import * as fs from "fs";
-import * as path from "path";
-import { toolLog } from "../style";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 export const readFileTool = tool(
   async ({ filename }: { filename: string }) => {
@@ -22,7 +21,6 @@ export const readFileTool = tool(
       }
 
       const content = fs.readFileSync(resolved, "utf-8");
-      console.log(toolLog("read_file", filename));
       return content;
     } catch (err: any) {
       if (err.code === "ENOENT") {

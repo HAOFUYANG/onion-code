@@ -4,14 +4,14 @@
   "description": "CLI AI agent with tool calling (like OpenCode)",
   "author": "haofuyang",
   "docs": "https://github.com/haofuyang/onion-code",
-  "type": "commonjs",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "onionCode": "bin/onionCode.js"
   },
   "scripts": {
-    "dev": "ts-node src/agent/cli.ts",
+    "dev": "tsx src/agent/cli.ts",
     "start": "node dist/agent/cli.js",
     "build": "tsc && mkdir -p dist/agent/skills && cp -r src/agent/skills/* dist/agent/skills/",
     "test": "vitest run"

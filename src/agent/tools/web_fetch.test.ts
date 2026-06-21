@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { webFetchTool } from "./web_fetch";
+import { webFetchTool } from "./web_fetch.js";
 
 const mockFetch = vi.fn();
 

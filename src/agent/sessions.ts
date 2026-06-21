@@ -1,9 +1,9 @@
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import Database from "better-sqlite3";
 import chalk from "chalk";
 import Table from "cli-table3";
-import { getDataDir } from "./config";
+import { getDataDir } from "./config.js";
 
 // ── UUIDv7 时间戳提取 ────────────────────────────────────────
 // UUIDv7 格式：xxxxxxxx-xxxx-7xxx-xxxx-xxxxxxxxxxxx

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { searchTool } from "./search";
+import { searchTool } from "./search.js";
 
 describe("searchTool", () => {
   it("should return foggy weather when query contains 'sf'", async () => {

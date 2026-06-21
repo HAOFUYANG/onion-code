@@ -1,7 +1,7 @@
 import { describe, it, expect, afterAll } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
-import { writeFileTool } from "./write_file";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { writeFileTool } from "./write_file.js";
 
 const TEST_FILE = "_test_write_output.txt";
 const TEST_CONTENT = "Hello, this is a test file created by write_file_tool.";

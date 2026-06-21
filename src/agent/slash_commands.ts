@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import { openConfigDialog } from "./config";
+import { openConfigDialog } from "./config.js";
 
 export interface SlashCommandContext {
   newThread: () => void;
@@ -32,8 +32,8 @@ export const slashCommands: SlashCommand[] = [
     handler: (ctx, args) => {
       if (!args?.trim()) {
         console.log(
-          chalk.yellow(
-            "\n⚠ 用法：/rewind <thread_id>  示例：/rewind /sessions 查看 ID\n",
+          chalk.dim(
+            "\n  用法：/rewind <thread_id>  先用 /sessions 查看 ID\n",
           ),
         );
         return;
@@ -57,8 +57,8 @@ export const slashCommands: SlashCommand[] = [
     description: "切换终端主题（即将支持）",
     handler: () => {
       console.log(
-        chalk.yellow(
-          "\n/theme 暂未实现。主题系统正在装配，别催，它还在穿宇航服。\n",
+        chalk.dim(
+          "\n  /theme 暂未实现。主题系统正在装配，别催，它还在穿宇航服。\n",
         ),
       );
     },

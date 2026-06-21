@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-require("../dist/agent/cli.js");
+import("../dist/agent/cli.js");

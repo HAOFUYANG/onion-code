@@ -1,8 +1,8 @@
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import chalk from "chalk";
 import inquirer from "inquirer";
-import { ensurePythonEnvironment, PYTHON_DATA_PACKAGES } from "./python_env";
+import { ensurePythonEnvironment, PYTHON_DATA_PACKAGES } from "./python_env.js";
 
 export interface PythonPipConfig {
   indexUrl: string;

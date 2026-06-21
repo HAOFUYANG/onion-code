@@ -1,12 +1,12 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import { Command } from "commander";
-import { runAgentStream } from "./agent";
-import { readUserInput } from "./input";
-import { slashCommands, type SlashCommandContext } from "./slash_commands";
-import { brand, status, splashScreen } from "./style";
-import { querySessions, renderSessionsTable, threadExists } from "./sessions";
-import pkg from "../../package.json";
+import { runAgentStream } from "./agent.js";
+import { readUserInput } from "./input.js";
+import { slashCommands, type SlashCommandContext } from "./slash_commands.js";
+import { status, splashScreen, assistantPrefix, userEcho, type InputContext, toolLog, toolLogLines } from "./style.js";
+import { querySessions, renderSessionsTable, threadExists } from "./sessions.js";
+import pkg from "../../package.json" with { type: "json" };
 
 const program = new Command();
 
@@ -58,7 +58,8 @@ program
   )
   .action(async (message: string[]) => {
     const input = message.join(" ");
-    process.stdout.write(`\n${brand.onion}: `);
+    process.stdout.write(userEcho(input));
+    process.stdout.write(assistantPrefix());
     try {
       await runAgentStream(input, (token) => process.stdout.write(token));
       process.stdout.write("\n");
@@ -78,11 +79,14 @@ program.parse(process.argv);
 
 async function startInteractiveChat() {
   let threadId: string = randomUUID();
+  let messageCount = 0;
+  let lastResponseMs: number | null = null;
+  const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
 
   const slashContext: SlashCommandContext = {
     newThread: () => {
       threadId = randomUUID();
-      console.log(`\n✅ 已新建会话：${threadId}\n`);
+      console.log(`\n  ${chalk.dim("✓")} 新建会话 ${chalk.cyan(threadId)}\n`);
     },
     showSessions: () => {
       const sessions = querySessions(20);
@@ -92,22 +96,24 @@ async function startInteractiveChat() {
       if (!threadExists(targetId)) {
         console.log(
           chalk.red(
-            `\n❌ 找不到该会话：${targetId}\n   请用 /sessions 查看已有的 thread_id。\n`,
+            `\n  找不到会话 ${chalk.dim(targetId)}，用 /sessions 查看列表\n`,
           ),
         );
         return;
       }
       threadId = targetId;
       console.log(
-        chalk.green(
-          `\n⏪ 已切换到历史会话：${threadId}\n   直接输入内容即可继续聊天。\n`,
-        ),
+        `\n  ${chalk.dim("⏪")} 已切换到历史会话 ${chalk.cyan(threadId)}\n`,
       );
     },
     showHelp: () => {
-      console.log("\n可用 Slash Commands：");
+      console.log(`\n  ${chalk.dim("可用命令")}`);
       for (const command of slashCommands) {
-        console.log(`  /${command.name.padEnd(8)} ${command.description}`);
+        const name = `/${command.name}`;
+        const padding = " ".repeat(Math.max(0, 14 - name.length));
+        console.log(
+          `    ${chalk.cyan(name)}${padding}${chalk.dim(command.description)}`,
+        );
       }
       console.log("");
     },
@@ -117,6 +123,7 @@ async function startInteractiveChat() {
     const abortController = new AbortController();
     const stdin = process.stdin;
     const wasRaw = stdin.isTTY ? stdin.isRaw : false;
+    let firstToken = true;
 
     // 监听 ESC 键（ASCII 27 = 0x1b）
     stdin.resume();
@@ -130,13 +137,39 @@ async function startInteractiveChat() {
     stdin.on("data", onData);
 
     try {
-      process.stdout.write(`\n${brand.onion}: `);
+      process.stdout.write(assistantPrefix());
+      const startMs = Date.now();
       await runAgentStream(
         userInput,
-        (token: string) => process.stdout.write(token),
+        (token: string) => {
+          if (firstToken) {
+            // 首个 token：清除当前行的思考指示器（回退到行首重写）
+            process.stdout.write("\r\x1b[K");
+            process.stdout.write(assistantPrefix().trimEnd());
+            firstToken = false;
+          }
+          process.stdout.write(token);
+        },
         threadId,
         abortController.signal,
+        (toolName: string, args: Record<string, any>) => {
+          // 工具调用日志：作为流的一部分输出，不打断流式
+          const detail = args.command ?? args.code ?? args.query ?? args.url ?? args.filename ?? args.skillName;
+          const lines = args.code ? String(args.code).split("\n").length : 0;
+          if (lines > 0) {
+            process.stdout.write(toolLogLines(toolName, lines));
+          } else {
+            process.stdout.write(toolLog(toolName, detail ? String(detail) : undefined));
+          }
+        },
       );
+      if (firstToken) {
+        // 无 token 输出（空响应或被中断）
+        process.stdout.write("\r\x1b[K");
+        firstToken = false;
+      }
+      lastResponseMs = Date.now() - startMs;
+      messageCount++;
       process.stdout.write("\n\n");
     } finally {
       stdin.removeListener("data", onData);
@@ -155,7 +188,13 @@ async function startInteractiveChat() {
   );
 
   while (true) {
-    const input = await readUserInput();
+    const ctx: InputContext = {
+      model: modelName,
+      threadId: threadId.slice(0, 8),
+      messageCount,
+      lastResponseMs,
+    };
+    const input = await readUserInput(ctx);
 
     if (input.type === "exit") {
       console.log(status.bye);

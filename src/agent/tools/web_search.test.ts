@@ -15,7 +15,7 @@ vi.mock("@langchain/tavily", () => ({
   },
 }));
 
-import { webSearchTool } from "./web_search";
+import { webSearchTool } from "./web_search.js";
 
 describe("webSearchTool", () => {
   beforeEach(() => {

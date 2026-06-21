@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { runJsTool } from "./run_js";
+import { runJsTool } from "./run_js.js";
 
 describe("runJsTool", () => {
   // ── 正常功能 ──
