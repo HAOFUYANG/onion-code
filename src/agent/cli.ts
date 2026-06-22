@@ -4,8 +4,20 @@ import { Command } from "commander";
 import { runAgentStream } from "./agent.js";
 import { readUserInput } from "./input.js";
 import { slashCommands, type SlashCommandContext } from "./slash_commands.js";
-import { status, splashScreen, assistantPrefix, userEcho, type InputContext, toolLog, toolLogLines } from "./style.js";
-import { querySessions, renderSessionsTable, threadExists } from "./sessions.js";
+import {
+  status,
+  splashScreen,
+  assistantPrefix,
+  userEcho,
+  type InputContext,
+  toolLog,
+  toolLogLines,
+} from "./style.js";
+import {
+  querySessions,
+  renderSessionsTable,
+  threadExists,
+} from "./sessions.js";
 import pkg from "../../package.json" with { type: "json" };
 
 const program = new Command();
@@ -19,7 +31,7 @@ function formatError(err: unknown): string {
   // DeepSeek 内容安全审查
   if (msg.includes("Content Exists Risk")) {
     return (
-      "请求被 DeepSeek 安全审查拦截（Content Exists Risk）。\n" +
+      "请求被安全审查拦截（Content Exists Risk）。\n" +
       "        可能是工具返回的搜索结果触发了内容过滤，可尝试换个问法或简化查询。"
     );
   }
@@ -154,12 +166,20 @@ async function startInteractiveChat() {
         abortController.signal,
         (toolName: string, args: Record<string, any>) => {
           // 工具调用日志：作为流的一部分输出，不打断流式
-          const detail = args.command ?? args.code ?? args.query ?? args.url ?? args.filename ?? args.skillName;
+          const detail =
+            args.command ??
+            args.code ??
+            args.query ??
+            args.url ??
+            args.filename ??
+            args.skillName;
           const lines = args.code ? String(args.code).split("\n").length : 0;
           if (lines > 0) {
             process.stdout.write(toolLogLines(toolName, lines));
           } else {
-            process.stdout.write(toolLog(toolName, detail ? String(detail) : undefined));
+            process.stdout.write(
+              toolLog(toolName, detail ? String(detail) : undefined),
+            );
           }
         },
       );
