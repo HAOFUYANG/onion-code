@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: assistant_ui
+title: Assistant UI 技能文档
+scope:
+    - .agents/skills/assistant-ui/
+source_files: []
+depends_on: []
+related_to:
+    - path: ui

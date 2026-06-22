@@ -3,7 +3,7 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-06-22T09:18:43Z"
+exported_at: "2026-06-22T11:30:38Z"
 modules:
     "":
         dir_name: TARS 风格 CLI AI Agent
@@ -13,8 +13,18 @@ modules:
         children: []
         depends_on: []
         related_to: []
+    assistant_ui:
+        dir_name: Assistant UI 技能文档
+        title: Assistant UI 技能文档
+        scope:
+            - .agents/skills/assistant-ui/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: ui
     build_system:
-        dir_name: 构建与发布系统
+        dir_name: 构建与发布系统_2
         title: 构建与发布系统
         scope: []
         source_files:
@@ -27,7 +37,7 @@ modules:
         depends_on: []
         related_to: []
     configuration_system:
-        dir_name: 配置系统：环境变量与 JSON 文件分层管理
+        dir_name: 配置系统：环境变量与 JSON 文件分层管理_2
         title: 配置系统：环境变量与 JSON 文件分层管理
         scope: []
         source_files:
@@ -40,19 +50,19 @@ modules:
         depends_on: []
         related_to: []
     dependency_management:
-        dir_name: 依赖管理体系
-        title: 依赖管理体系
+        dir_name: 基于 pnpm 的依赖管理与技能锁定机制
+        title: 基于 pnpm 的依赖管理与技能锁定机制
         scope: []
         source_files:
             - package.json
             - pnpm-lock.yaml
             - skills-lock.json
-            - src/agent/python_env.ts
+            - tsconfig.json
         children: []
         depends_on: []
         related_to: []
     error_handling:
-        dir_name: 错误处理与安全防护机制
+        dir_name: 错误处理与安全防护机制_2
         title: 错误处理与安全防护机制
         scope: []
         source_files:
@@ -91,3 +101,13 @@ modules:
         children: []
         depends_on: []
         related_to: []
+    ui:
+        dir_name: 基于 Ink 的终端交互界面
+        title: 基于 Ink 的终端交互界面
+        scope:
+            - src/agent/ui/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: assistant_ui

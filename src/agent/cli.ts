@@ -45,16 +45,6 @@ program
 
 // ── 默认：Ink 全量交互界面 ────────────────────────────────────
 program.action(() => {
-  process.stdout.write(
-    splashScreen({
-      name: pkg.name,
-      version: pkg.version,
-      description: (pkg as any).description,
-      author: (pkg as any).author ?? "unknown",
-      docs: (pkg as any).docs ?? "",
-    }),
-  );
-
   const { unmount } = render(
     React.createElement(App, {
       onExit: () => {

@@ -53,9 +53,7 @@ export function formatInputStatus(ctx: InputContext): string {
 
   parts.push(`${chalk.cyan("🤖")} ${chalk.dim(ctx.model)}`);
   parts.push(`${chalk.magenta("🧵")} ${chalk.dim(ctx.threadId)}`);
-  parts.push(
-    `${chalk.yellow("💬")} ${chalk.dim(`${ctx.messageCount} msgs`)}`,
-  );
+  parts.push(`${chalk.yellow("💬")} ${chalk.dim(`${ctx.messageCount} msgs`)}`);
   if (ctx.lastResponseMs !== null) {
     const secs = (ctx.lastResponseMs / 1000).toFixed(1);
     parts.push(`${chalk.green("⏱")} ${chalk.dim(`${secs}s`)}`);
@@ -70,7 +68,9 @@ export function formatInputStatus(ctx: InputContext): string {
  */
 export function userEcho(text: string): string {
   const lines = text.split("\n");
-  const indented = lines.map((l) => chalk.dim(l)).join(`\n  ${chalk.dim("❯")} `);
+  const indented = lines
+    .map((l) => chalk.dim(l))
+    .join(`\n  ${chalk.dim("❯")} `);
   return `\n  ${chalk.magenta("❯")} ${indented}\n`;
 }
 
@@ -83,7 +83,10 @@ export function assistantPrefix(): string {
 }
 
 // ── 工具调用日志（丰富配色，每个工具有独立图标）─────────────
-const TOOL_STYLES: Record<string, { icon: string; color: (s: string) => string }> = {
+const TOOL_STYLES: Record<
+  string,
+  { icon: string; color: (s: string) => string }
+> = {
   exec: { icon: "⚙", color: chalk.yellow },
   run_js: { icon: "⚡", color: chalk.green },
   run_py: { icon: "🐍", color: chalk.blue },
@@ -197,13 +200,11 @@ export function splashScreen(opts: SplashOptions): string {
     margin: { top: 0, bottom: 0, left: 0, right: 0 },
     borderStyle: "double",
     borderColor: "#A855F7",
-    float: "center",
+    float: "le",
   } as any);
 
   // 快捷操作
-  const tips = [
-    `  ${chalk.hex("#C084FC")("▶")} ${chalk.dim("输入内容")} ${chalk.white("开始对话")}    ${chalk.hex("#C084FC")("▶")} ${chalk.cyan("/")} ${chalk.dim("打开命令面板")}    ${chalk.hex("#C084FC")("▶")} ${chalk.cyan("ESC")} ${chalk.dim("中断")}    ${chalk.hex("#C084FC")("▶")} ${chalk.cyan("exit")} ${chalk.dim("退出")}`,
-  ].join("\n");
+  const tips = [].join("\n");
 
   return `\n${bigName}\n\n${infoBox}\n\n${tips}\n`;
 }

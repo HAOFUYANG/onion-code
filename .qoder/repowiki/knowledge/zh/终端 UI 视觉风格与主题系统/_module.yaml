@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: frontend_style
+title: 终端 UI 视觉风格与主题系统
+scope: []
+source_files:
+    - src/agent/style.ts
+    - src/agent/ui/Thread.tsx
+    - src/agent/ui/App.tsx
+    - src/agent/cli.ts
+depends_on: []
+related_to: []
