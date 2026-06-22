@@ -1,6 +1,11 @@
 import * as readline from "node:readline";
 import chalk from "chalk";
-import { brand, inputBorder, formatInputStatus, type InputContext } from "./style.js";
+import {
+  brand,
+  inputBorder,
+  formatInputStatus,
+  type InputContext,
+} from "./style.js";
 import {
   formatSlashCommand,
   matchSlashCommands,
@@ -19,6 +24,8 @@ interface InputState {
   renderedLines: number;
   /** 上一次渲染时面板是否可见，用于判断是否需要全量重绘 */
   panelVisible: boolean;
+  /** 自定义 █ 闪烁光标是否可见 */
+  cursorOn: boolean;
 }
 
 function fallbackPrompt(): Promise<UserInputResult> {
@@ -110,9 +117,10 @@ function clearPreviousRender(lines: number): void {
  * 渲染输入区域。
  *
  * 光标策略 —— 像前端 input 组件一样：
- * - 正常打字走「快速路径」：光标已在输入行上，只 clearLine + 重写本行，写完光标自然在内容末尾。
+ * - 自定义 █ 闪烁光标：用 chalk.inverse(" ") 渲染反色块字符，定时器控制显隐。
+ * - 终端原生光标已隐藏（\x1b[?25l），视觉光标完全由 █ 字符接管。
+ * - 正常打字走「快速路径」：只 clearLine + 重写本行。
  * - 面板出现/消失走「全量重绘」：先预留空白行，写完边线+状态后 \x1b[NA 回到空白行写入输入内容。
- * 全程不手动计算光标列号，光标位置由终端自动维护。
  */
 function render(state: InputState, ctx?: InputContext): void {
   const suggestions = getSuggestions(state);
@@ -121,17 +129,19 @@ function render(state: InputState, ctx?: InputContext): void {
     (state.buffer.startsWith("/") && !state.slashDismissed);
 
   const prefix = `  ${inputBorder} ${brand.prompt}`;
-  const content = state.buffer
-    ? state.buffer
-    : chalk.dim("输入消息，或 / 查看命令...");
 
-  // ── 快速路径：只需更新输入行内容，光标已在输入行上 ──
+  // 自定义闪烁光标：反色空格模拟 █ 块状光标
+  const cursorChar = state.cursorOn ? chalk.inverse(" ") : " ";
+  const content = state.buffer
+    ? state.buffer + cursorChar
+    : cursorChar + chalk.dim("输入消息，或 / 查看命令...");
+
+  // ── 快速路径：只需更新输入行内容 ──
   const layoutChanged = shouldShowPanel !== state.panelVisible;
   if (state.renderedLines > 0 && !shouldShowPanel && !layoutChanged) {
     readline.cursorTo(process.stdout, 0);
     readline.clearLine(process.stdout, 0);
     process.stdout.write(`${prefix}${content}`);
-    // 光标自然停在 content 末尾 ✓
     return;
   }
 
@@ -170,7 +180,6 @@ function render(state: InputState, ctx?: InputContext): void {
   const upLines = 1 + (ctx ? 1 : 0);
   process.stdout.write(`\x1b[${upLines}A`);
   process.stdout.write(`\r${prefix}${content}`);
-  // 光标自然停在 content 末尾 ✓
 }
 
 function normalizeSelection(state: InputState): void {
@@ -196,8 +205,8 @@ export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
   if (process.stdin.isTTY) process.stdin.setRawMode(true);
   process.stdin.resume();
 
-  // 切换终端光标为竖线样式（beam cursor），退出时恢复
-  process.stdout.write("\x1b[5 q");
+  // 隐藏终端原生光标，使用自定义 █ 闪烁光标
+  process.stdout.write("\x1b[?25l");
 
   const state: InputState = {
     buffer: "",
@@ -205,16 +214,24 @@ export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
     slashDismissed: false,
     renderedLines: 0,
     panelVisible: false,
+    cursorOn: true,
   };
+
+  // 光标闪烁定时器：约 530ms 切换一次，模拟输入框光标动画
+  const blinkInterval = setInterval(() => {
+    state.cursorOn = !state.cursorOn;
+    render(state, ctx);
+  }, 530);
 
   render(state, ctx);
 
   return new Promise((resolve) => {
     const cleanup = () => {
+      clearInterval(blinkInterval);
       process.stdin.off("keypress", onKeypress);
       if (process.stdin.isTTY) process.stdin.setRawMode(false);
-      // 恢复默认块状光标
-      process.stdout.write("\x1b[2 q");
+      // 恢复终端原生光标
+      process.stdout.write("\x1b[?25h");
       process.stdout.write("\n");
     };
 

@@ -2,13 +2,92 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-06-22T02:10:17Z"
+nodes_managed: true
+exported_at: "2026-06-22T09:18:43Z"
 modules:
     "":
         dir_name: TARS 风格 CLI AI Agent
         title: TARS 风格 CLI AI Agent
         scope: []
         source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    build_system:
+        dir_name: 构建与发布系统
+        title: 构建与发布系统
+        scope: []
+        source_files:
+            - package.json
+            - vite.config.ts
+            - tsconfig.json
+            - pnpm-lock.yaml
+            - bin/onionCode.js
+        children: []
+        depends_on: []
+        related_to: []
+    configuration_system:
+        dir_name: 配置系统：环境变量与 JSON 文件分层管理
+        title: 配置系统：环境变量与 JSON 文件分层管理
+        scope: []
+        source_files:
+            - .env
+            - src/agent/config.ts
+            - src/agent/agent.ts
+            - package.json
+            - vite.config.ts
+        children: []
+        depends_on: []
+        related_to: []
+    dependency_management:
+        dir_name: 依赖管理体系
+        title: 依赖管理体系
+        scope: []
+        source_files:
+            - package.json
+            - pnpm-lock.yaml
+            - skills-lock.json
+            - src/agent/python_env.ts
+        children: []
+        depends_on: []
+        related_to: []
+    error_handling:
+        dir_name: 错误处理与安全防护机制
+        title: 错误处理与安全防护机制
+        scope: []
+        source_files:
+            - src/agent/tools/exec.ts
+            - src/agent/tools/run_py.ts
+            - src/agent/tools/security.ts
+            - src/agent/python_env.ts
+            - src/agent/sessions.ts
+            - src/ui/composables/useAgent.ts
+        children: []
+        depends_on: []
+        related_to: []
+    frontend_style:
+        dir_name: TUI 终端界面风格与主题系统
+        title: TUI 终端界面风格与主题系统
+        scope: []
+        source_files:
+            - src/ui/composables/useTheme.ts
+            - src/ui/app.vue
+            - src/ui/components/InputBox.vue
+            - src/ui/components/SplashScreen.vue
+            - src/ui/components/MessageItem.vue
+            - src/ui/components/SlashPanel.vue
+        children: []
+        depends_on: []
+        related_to: []
+    logging_system:
+        dir_name: 日志与输出机制
+        title: 日志与输出机制
+        scope: []
+        source_files:
+            - src/ui/main.ts
+            - src/agent/config.ts
+            - src/agent/tools/exec.ts
+            - src/agent/tools/run_py.ts
         children: []
         depends_on: []
         related_to: []

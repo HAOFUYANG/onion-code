@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: frontend_style
+title: TUI 终端界面风格与主题系统
+scope: []
+source_files:
+    - src/ui/composables/useTheme.ts
+    - src/ui/app.vue
+    - src/ui/components/InputBox.vue
+    - src/ui/components/SplashScreen.vue
+    - src/ui/components/MessageItem.vue
+    - src/ui/components/SlashPanel.vue
+depends_on: []
+related_to: []

@@ -1,0 +1,12 @@
+schema_version: 1
+module_path: build_system
+title: 构建与发布系统
+scope: []
+source_files:
+    - package.json
+    - vite.config.ts
+    - tsconfig.json
+    - pnpm-lock.yaml
+    - bin/onionCode.js
+depends_on: []
+related_to: []
