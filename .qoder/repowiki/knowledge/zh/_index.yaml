@@ -2,19 +2,12 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-06-22T00:59:15Z"
+exported_at: "2026-06-22T02:10:17Z"
 modules:
     "":
         dir_name: TARS 风格 CLI AI Agent
         title: TARS 风格 CLI AI Agent
-        scope:
-            - .gitignore
-            - package.json
-            - pnpm-lock.yaml
-            - skills-lock.json
-            - tsconfig.json
-            - src/
-            - .env
+        scope: []
         source_files: []
         children: []
         depends_on: []
