@@ -12,17 +12,40 @@ import {
   useAui,
   useAuiState,
 } from "@assistant-ui/react-ink";
-import {
-  MarkdownText,
-  MarkdownTextPrimitive,
-} from "@assistant-ui/react-ink-markdown";
+import { MarkdownTextPrimitive } from "@assistant-ui/react-ink-markdown";
 import { matchSlashCommands, formatSlashCommand } from "../slash_commands.js";
+import { T, terminalMode } from "./theme.js";
 import { createRequire } from "node:module";
 import figlet from "figlet";
 import chalk from "chalk";
-import pkg from "../../../package.json" with { type: "json" };
 
-// ── figlet 字体初始化 ──────────────────────────────────────────
+// ── Markdown 流式输出优化 ────────────────────────────────────
+// streaming 过程中 AI 可能输出未闭合的语法残片，预处理将其修复为安全的可渲染形式。
+// markdansi 会按原文字符处理未闭合的模块，不会崩溃，但这里额外保证了完整性。
+function preprocessMarkdownStream(text: string): string {
+  let t = text;
+  // 修复未闭合的代码块：数一下 ``` 出现次数，奇数表示未闭合
+  const fenceCount = (t.match(/^```/gm) || []).length;
+  if (fenceCount % 2 !== 0) t += "\n```";
+  // 修复未闭合的粗体：** 奇数
+  const boldCount = (t.match(/\*\*/g) || []).length;
+  if (boldCount % 2 !== 0) t += "**";
+  // 修复未闭合的斜体（单个 *）：找尾部独立的 *
+  const trailingItalic = t.match(/(\*[^*\n][^\n]*)$/);
+  if (trailingItalic && (trailingItalic[1].match(/\*/g) || []).length % 2 !== 0)
+    t += "*";
+  return t;
+}
+
+// markdansi 主题：跟随终端模式自动切换
+// light 终端下使用 dim（轻色调，避免白底上强色过于刺眼）；dark 终端使用 bright
+// 类型为已知的 ThemeName自面量
+const MARKDOWN_THEME: "dim" | "bright" =
+  terminalMode === "light" ? "dim" : "bright";
+
+// ── 色彩系统已迁移至 theme.ts（语义色板 T，dark/light 自适应）──
+
+// ── figlet 大标题（渐变色，跟随主题） ────────────────────────
 const _require = createRequire(import.meta.url);
 try {
   const doomFont = _require("figlet/importable-fonts/Doom");
@@ -54,33 +77,9 @@ function gradientText(text: string, c1: string, c2: string): string {
 
 const BIG_TITLE = gradientText(
   figlet.textSync("onionCode", { font: "Doom", horizontalLayout: "fitted" }),
-  "#60a5fa",
-  "#f59e0b",
+  T.figletFrom,
+  T.figletTo,
 );
-
-// ── 色彩 Token（OpenCode 蓝/橙双色主题）────────────────────────
-const C = {
-  userLabel: "#3b82f6" as const, // 蓝色  — 用户名/Build 标签
-  aiLabel: "#3b82f6" as const, // 蓝色  — AI 状态图标
-  aiReason: "#f59e0b" as const, // 橙黄  — Thought 推理行
-  spinner: "#f59e0b" as const, // 橙黄  — 加载 spinner
-  spinnerTxt: "#f59e0b" as const, // 橙黄  — 思考中文字
-  slashBg: "#1e3a5f" as const, // 深蓝  — slash 高亮背景
-  slashFg: "white" as const, // 白字  — slash 高亮
-  slashDim: "#6b7280" as const, // 灰色  — slash 普通项
-  prompt: "#3b82f6" as const, // 蓝色  — ❯ 符号
-  border: "#3b3b3b" as const, // 暗灰  — 输入框边框
-  accentLine: "#3b82f6" as const, // 蓝色  — 左侧竖线
-  modelIcon: "#3b82f6" as const, // 蓝色  — ■ 状态图标
-  statusDot: "#3b82f6" as const, // 蓝色  — 状态点
-  cancel: "#f87171" as const, // 红色  — esc 中断
-  dim: "#6b7280" as const, // 灰色  — 辅助文字
-  tipDot: "#f59e0b" as const, // 橙黄  — Tip 点
-  tipLabel: "#f59e0b" as const, // 橙黄  — "Tip" 标签
-  shortcut: "white" as const, // 白色  — 快捷键
-  version: "#4b5563" as const, // 深灰  — 版本号
-  high: "#f59e0b" as const, // 橙黄  — high 标签
-} as const;
 
 // ── 用户消息 ──────────────────────────────────────────────────
 const UserMessage = () => (
@@ -92,7 +91,7 @@ const UserMessage = () => (
       paddingTop={1}
       paddingBottom={1}
       borderStyle="single"
-      borderColor={C.accentLine}
+      borderColor={T.primary}
       borderTop={false}
       borderRight={false}
       borderBottom={false}
@@ -117,19 +116,33 @@ const AssistantMessage = () => (
     <Box flexDirection="column" marginBottom={1} paddingLeft={1}>
       <MessagePrimitive.Parts
         components={{
-          Text: () => <MarkdownTextPrimitive />,
+          Text: () => (
+            <>
+              <MarkdownTextPrimitive
+                preprocess={preprocessMarkdownStream}
+                theme={MARKDOWN_THEME}
+              />
+              {/* streaming 时显示光标▮，完成后自动消失 */}
+              <MessagePartPrimitive.InProgress>
+                <Text color={T.primary}>{" ▮"}</Text>
+              </MessagePartPrimitive.InProgress>
+            </>
+          ),
           Reasoning: () => (
             <Box marginBottom={1}>
-              <Text color={C.aiReason} italic>
-                {"+ Thought: "}
+              <Text color={T.accent} italic>
+                {"+  Thought: "}
               </Text>
-              <MarkdownTextPrimitive preprocess={(t) => t} />
+              <MarkdownTextPrimitive
+                preprocess={preprocessMarkdownStream}
+                theme={MARKDOWN_THEME}
+              />
             </Box>
           ),
         }}
       />
       <ErrorPrimitive.Root>
-        <Text color={C.cancel}>
+        <Text color={T.cancel}>
           {"✖ "}
           <ErrorPrimitive.Message />
         </Text>
@@ -141,9 +154,9 @@ const AssistantMessage = () => (
 // ── 加载状态 ──────────────────────────────────────────────────
 const Loading = () => (
   <LoadingPrimitive.Root paddingLeft={3} marginBottom={1}>
-    <LoadingPrimitive.Spinner color={C.spinner} variant="dots" />
-    <Text color={C.spinnerTxt}>{" 思考中  "}</Text>
-    <LoadingPrimitive.ElapsedTime color={C.dim} />
+    <LoadingPrimitive.Spinner color={T.accent} variant="dots" />
+    <Text color={T.accent}>{" 思考中  "}</Text>
+    <LoadingPrimitive.ElapsedTime dimColor />
   </LoadingPrimitive.Root>
 );
 
@@ -165,18 +178,18 @@ const SlashPanel = ({
           <Box key={cmd.name}>
             {sel ? (
               <Text
-                backgroundColor={C.slashBg}
-                color={C.slashFg}
+                backgroundColor={T.slashBg}
+                color={T.slashFg}
                 bold
               >{` /${cmd.name} `}</Text>
             ) : (
-              <Text color={C.slashDim}>{` /${cmd.name} `}</Text>
+              <Text dimColor>{` /${cmd.name} `}</Text>
             )}
-            <Text color={C.dim}>{`  ${cmd.description}`}</Text>
+            <Text dimColor>{`  ${cmd.description}`}</Text>
           </Box>
         );
       })}
-      <Text color={C.dim}>{"  tab 补全  ↑↓ 选择"}</Text>
+      <Text dimColor>{"  tab 补全  ↑↓ 选择"}</Text>
     </Box>
   );
 };
@@ -190,18 +203,18 @@ const ComposerFooter = () => {
     .join(" ");
   return (
     <StatusBarPrimitive.Root gap={0} paddingX={2}>
-      <Text color={C.modelIcon} bold>
+      <Text color={T.primary} bold>
         {"■ "}
       </Text>
-      <Text color={C.userLabel} bold>
+      <Text color={T.primary} bold>
         {"Build"}
       </Text>
-      <Text color={C.dim}>{" · "}</Text>
-      <Text bold color="white">
+      <Text dimColor>{" · "}</Text>
+      <Text bold color={T.textBold}>
         {modelDisplay}
       </Text>
-      <Text color={C.dim}>{" · "}</Text>
-      <StatusBarPrimitive.MessageCount color={C.dim} />
+      <Text dimColor>{" · "}</Text>
+      <StatusBarPrimitive.MessageCount dimColor />
     </StatusBarPrimitive.Root>
   );
 };
@@ -224,15 +237,13 @@ const HomePage = () => {
           paddingX={1}
           paddingTop={0}
           paddingBottom={0}
-          marginTop={1}
-          marginBottom={1}
-          backgroundColor="#272626ff"
+          backgroundColor={T.homeBg}
           borderStyle="bold"
           borderLeft={true}
           borderRight={false}
           borderTop={false}
           borderBottom={false}
-          borderColor={C.accentLine}
+          borderColor={T.primary}
         >
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
@@ -244,63 +255,32 @@ const HomePage = () => {
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={C.cancel}>{"  esc"}</Text>
+                <Text color={T.cancel}>{"  esc"}</Text>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
 
-          {/* 第二行：Build · ModelName Provider · high */}
+          {/* 状态栏：Build · ModelName · 快捷键提示 */}
           <StatusBarPrimitive.Root gap={0}>
-            <Text color={C.userLabel} bold>
+            <Text color={T.primary} bold>
               {"Build"}
             </Text>
-            <Text color={C.dim}>{"\u00b7  "}</Text>
-            <Text bold color="white">
+            <Text dimColor>{"  "}</Text>
+            <Text bold color={T.textBold}>
               {modelName
                 .split("-")
                 .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(" ")}
             </Text>
-            <Text color={C.dim}>{"  DeepSeek  \u00b7  "}</Text>
-            <Text color={C.high} bold>
-              {"high"}
+            <Box flexGrow={1} />
+            <Text dimColor>{"/"}</Text>
+            <Text dimColor>{" commands  "}</Text>
+            <Text color={T.primary} bold>
+              {"ctrl+c"}
             </Text>
+            <Text dimColor>{" exit"}</Text>
           </StatusBarPrimitive.Root>
         </Box>
-      </Box>
-
-      {/* 快捷键提示行（右对齐） */}
-      <Box justifyContent="flex-end" marginTop={1}>
-        <Text bold color={C.shortcut}>
-          {"/"}
-        </Text>
-        <Text color={C.dim}>{" commands   "}</Text>
-        <Text bold color={C.shortcut}>
-          {"ctrl+c"}
-        </Text>
-        <Text color={C.dim}>{" exit"}</Text>
-      </Box>
-
-      {/* Tip 行 */}
-      <Box marginTop={1}>
-        <Text color={C.tipDot}>{"● "}</Text>
-        <Text bold color={C.tipLabel}>
-          {"Tip "}
-        </Text>
-        <Text color={C.dim}>{"输入 "}</Text>
-        <Text bold color={C.shortcut}>
-          {"/"}
-        </Text>
-        <Text color={C.dim}>{" 打开命令面板，"}</Text>
-        <Text bold color={C.shortcut}>
-          {"esc"}
-        </Text>
-        <Text color={C.dim}>{" 中断正在运行的回复"}</Text>
-      </Box>
-
-      {/* 版本号（右下角） */}
-      <Box justifyContent="flex-end" marginTop={1}>
-        <Text color={C.version}>{pkg.version}</Text>
       </Box>
     </Box>
   );
@@ -339,13 +319,13 @@ const Composer = () => {
           paddingX={1}
           paddingTop={0}
           paddingBottom={0}
-          backgroundColor="#272626ff"
+          backgroundColor={T.inputBg}
           borderStyle="bold"
           borderLeft={true}
           borderRight={false}
           borderTop={false}
           borderBottom={false}
-          borderColor={C.accentLine}
+          borderColor={T.primary}
         >
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
@@ -355,7 +335,7 @@ const Composer = () => {
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={C.cancel}>{"  esc 中断"}</Text>
+                <Text color={T.cancel}>{"  esc 中断"}</Text>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>

@@ -18,6 +18,14 @@
 - [slash_commands.ts](file://src/agent/slash_commands.ts)
 </cite>
 
+## 更新摘要
+**变更内容**
+- 更新 Thread 组件部分以反映重大 UI 现代化改进
+- 新增 MarkdownTextPrimitive 组件使用说明
+- 更新输入区域视觉设计描述
+- 改进状态栏格式化说明
+- 更新快捷键指示符展示
+
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
@@ -237,7 +245,7 @@ App->>App : 渲染 Thread 组件
 
 ### 聊天界面组件
 
-Thread.tsx 实现了完整的聊天界面，包括用户消息、AI 消息、加载状态等：
+**更新** Thread.tsx 实现了完整的聊天界面，包括用户消息、AI 消息、加载状态等，并进行了重大 UI 现代化改进：
 
 ```mermaid
 classDiagram
@@ -254,7 +262,7 @@ class UserMessage {
 }
 class AssistantMessage {
 +MessagePrimitive.Root
-+MessagePartPrimitive.Text
++MarkdownTextPrimitive
 +MessagePartPrimitive.Reasoning
 +ErrorPrimitive.Root
 }
@@ -278,6 +286,13 @@ AssistantMessage --> ErrorPrimitive
 **图表来源**
 - [Thread.tsx:82-137](file://src/agent/ui/Thread.tsx#L82-L137)
 - [Thread.tsx:296-341](file://src/agent/ui/Thread.tsx#L296-L341)
+
+**更新** 主要 UI 改进包括：
+
+1. **官方 MarkdownTextPrimitive 组件**：AI 消息现在使用 `MarkdownTextPrimitive` 替代自定义文本渲染，提供更好的 Markdown 支持
+2. **现代化输入区域设计**：输入区域采用灰色背景和边框设计，提升视觉一致性
+3. **改进的状态栏格式化**：使用 `StatusBarPrimitive.Root` 组件提供统一的状态栏布局
+4. **优化的快捷键指示符**：快捷键显示格式更加清晰易读
 
 ### 适配器实现
 
@@ -308,7 +323,7 @@ N --> |是| O[清理并结束]
 
 **章节来源**
 - [App.tsx:1-30](file://src/agent/ui/App.tsx#L1-L30)
-- [Thread.tsx:1-363](file://src/agent/ui/Thread.tsx#L1-L363)
+- [Thread.tsx:1-392](file://src/agent/ui/Thread.tsx#L1-L392)
 - [adapter.ts:1-87](file://src/agent/ui/adapter.ts#L1-L87)
 
 ### 代理执行流程
@@ -486,5 +501,7 @@ CLI 提供了详细的错误信息格式化：
 2. **灵活的运行时选择**：支持多种后端集成方案
 3. **丰富的工具生态**：集成了搜索、文件操作、代码执行等多种工具
 4. **优秀的用户体验**：提供了流畅的流式响应和直观的 CLI 界面
+
+**更新** 特别值得一提的是，Thread 组件经过重大 UI 现代化改进，包括使用官方 MarkdownTextPrimitive 组件、现代化输入区域设计、改进的状态栏格式化和优化的快捷键指示符，显著提升了聊天界面的视觉设计和用户体验。
 
 该项目为使用 assistant-ui 构建聊天界面提供了很好的参考实现，特别是在 CLI 环境下的集成方案。

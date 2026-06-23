@@ -3,21 +3,14 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-06-22T12:21:16Z"
+exported_at: "2026-06-23T03:43:46Z"
 modules:
     "":
-        dir_name: 终端 AI 智能体运行时
-        title: 终端 AI 智能体运行时
-        scope:
-            - '**'
-        source_files:
-            - package.json
-            - pnpm-lock.yaml
-            - skills-lock.json
-            - src/agent/python_env.ts
-        children:
-            - assistant_ui
-            - ui
+        dir_name: TARS 风格 CLI AI Agent
+        title: TARS 风格 CLI AI Agent
+        scope: []
+        source_files: []
+        children: []
         depends_on: []
         related_to: []
     assistant_ui:
@@ -73,42 +66,44 @@ modules:
         title: 错误处理与安全防护机制
         scope: []
         source_files:
+            - src/agent/cli.ts
             - src/agent/tools/exec.ts
-            - src/agent/tools/run_py.ts
             - src/agent/tools/security.ts
-            - src/agent/python_env.ts
+            - src/agent/tools/run_py.ts
+            - src/agent/tools/web_fetch.ts
             - src/agent/sessions.ts
-            - src/ui/composables/useAgent.ts
+            - src/agent/python_env.ts
         children: []
         depends_on: []
         related_to: []
     frontend_style:
-        dir_name: 终端 UI 视觉风格与主题系统
-        title: 终端 UI 视觉风格与主题系统
+        dir_name: TUI 终端界面风格与主题系统
+        title: TUI 终端界面风格与主题系统
         scope: []
         source_files:
-            - src/agent/style.ts
-            - src/agent/ui/Thread.tsx
-            - src/agent/ui/App.tsx
-            - src/agent/cli.ts
+            - src/ui/composables/useTheme.ts
+            - src/ui/app.vue
+            - src/ui/components/InputBox.vue
+            - src/ui/components/SplashScreen.vue
+            - src/ui/components/MessageItem.vue
+            - src/ui/components/SlashPanel.vue
         children: []
         depends_on: []
         related_to: []
     logging_system:
-        dir_name: 日志与输出机制
-        title: 日志与输出机制
+        dir_name: 基于控制台与 UI 渲染的简易日志输出
+        title: 基于控制台与 UI 渲染的简易日志输出
         scope: []
         source_files:
-            - src/ui/main.ts
+            - src/agent/cli.ts
             - src/agent/config.ts
-            - src/agent/tools/exec.ts
-            - src/agent/tools/run_py.ts
+            - src/agent/style.ts
         children: []
         depends_on: []
         related_to: []
     ui:
-        dir_name: 终端对话交互界面
-        title: 终端对话交互界面
+        dir_name: 基于 Ink 的终端对话交互界面
+        title: 基于 Ink 的终端对话交互界面
         scope:
             - src/agent/ui/
         source_files: []
