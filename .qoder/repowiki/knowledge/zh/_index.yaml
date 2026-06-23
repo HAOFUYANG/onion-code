@@ -3,14 +3,21 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-06-22T11:30:38Z"
+exported_at: "2026-06-22T12:21:16Z"
 modules:
     "":
-        dir_name: TARS 风格 CLI AI Agent
-        title: TARS 风格 CLI AI Agent
-        scope: []
-        source_files: []
-        children: []
+        dir_name: 终端 AI 智能体运行时
+        title: 终端 AI 智能体运行时
+        scope:
+            - '**'
+        source_files:
+            - package.json
+            - pnpm-lock.yaml
+            - skills-lock.json
+            - src/agent/python_env.ts
+        children:
+            - assistant_ui
+            - ui
         depends_on: []
         related_to: []
     assistant_ui:
@@ -29,10 +36,9 @@ modules:
         scope: []
         source_files:
             - package.json
-            - vite.config.ts
             - tsconfig.json
-            - pnpm-lock.yaml
             - bin/onionCode.js
+            - pnpm-lock.yaml
         children: []
         depends_on: []
         related_to: []
@@ -44,8 +50,9 @@ modules:
             - .env
             - src/agent/config.ts
             - src/agent/agent.ts
+            - .data/config.json
+            - skills-lock.json
             - package.json
-            - vite.config.ts
         children: []
         depends_on: []
         related_to: []
@@ -76,16 +83,14 @@ modules:
         depends_on: []
         related_to: []
     frontend_style:
-        dir_name: TUI 终端界面风格与主题系统
-        title: TUI 终端界面风格与主题系统
+        dir_name: 终端 UI 视觉风格与主题系统
+        title: 终端 UI 视觉风格与主题系统
         scope: []
         source_files:
-            - src/ui/composables/useTheme.ts
-            - src/ui/app.vue
-            - src/ui/components/InputBox.vue
-            - src/ui/components/SplashScreen.vue
-            - src/ui/components/MessageItem.vue
-            - src/ui/components/SlashPanel.vue
+            - src/agent/style.ts
+            - src/agent/ui/Thread.tsx
+            - src/agent/ui/App.tsx
+            - src/agent/cli.ts
         children: []
         depends_on: []
         related_to: []
@@ -102,8 +107,8 @@ modules:
         depends_on: []
         related_to: []
     ui:
-        dir_name: 基于 Ink 的终端交互界面
-        title: 基于 Ink 的终端交互界面
+        dir_name: 终端对话交互界面
+        title: 终端对话交互界面
         scope:
             - src/agent/ui/
         source_files: []

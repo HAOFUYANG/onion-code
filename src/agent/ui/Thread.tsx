@@ -12,7 +12,10 @@ import {
   useAui,
   useAuiState,
 } from "@assistant-ui/react-ink";
-import { MarkdownText } from "@assistant-ui/react-ink-markdown";
+import {
+  MarkdownText,
+  MarkdownTextPrimitive,
+} from "@assistant-ui/react-ink-markdown";
 import { matchSlashCommands, formatSlashCommand } from "../slash_commands.js";
 import { createRequire } from "node:module";
 import figlet from "figlet";
@@ -114,17 +117,13 @@ const AssistantMessage = () => (
     <Box flexDirection="column" marginBottom={1} paddingLeft={1}>
       <MessagePrimitive.Parts
         components={{
-          Text: () => (
-            <Box flexDirection="column">
-              <MessagePartPrimitive.Text wrap="wrap" />
-            </Box>
-          ),
+          Text: () => <MarkdownTextPrimitive />,
           Reasoning: () => (
             <Box marginBottom={1}>
               <Text color={C.aiReason} italic>
                 {"+ Thought: "}
               </Text>
-              <MessagePartPrimitive.Reasoning color={C.aiReason} italic />
+              <MarkdownTextPrimitive preprocess={(t) => t} />
             </Box>
           ),
         }}
@@ -217,59 +216,63 @@ const HomePage = () => {
         <Text>{BIG_TITLE}</Text>
       </Box>
 
-      {/* 输入框区域：左侧主题色竖线（borderLeft 模拟 OpenCode 风格） */}
-      <Box
-        flexDirection="column"
-        paddingLeft={2}
-        paddingRight={3}
-        paddingTop={1}
-        paddingBottom={1}
-        borderStyle="single"
-        borderColor={C.accentLine}
-        borderTop={false}
-        borderRight={false}
-        borderBottom={false}
-        borderLeft={true}
-      >
-        {/* 第一行：输入框，marginBottom 增加行间呼吸感 */}
-        <Box marginBottom={1}>
-          <ComposerPrimitive.Input
-            submitOnEnter
-            placeholder={
-              "Ask anything... \u201cWhat is the tech stack of this project?\u201d"
-            }
-            autoFocus
-          />
-          <AuiIf condition={(s) => s.thread.isRunning}>
-            <ComposerPrimitive.Cancel>
-              <Text color={C.cancel}>{"  esc"}</Text>
-            </ComposerPrimitive.Cancel>
-          </AuiIf>
-        </Box>
+      {/* 左侧竖线 + 灰色背景输入区域 */}
+      <Box flexDirection="row">
+        <Box
+          flexDirection="column"
+          flexGrow={1}
+          paddingX={1}
+          paddingTop={0}
+          paddingBottom={0}
+          marginTop={1}
+          marginBottom={1}
+          backgroundColor="#272626ff"
+          borderStyle="bold"
+          borderLeft={true}
+          borderRight={false}
+          borderTop={false}
+          borderBottom={false}
+          borderColor={C.accentLine}
+        >
+          <Box marginBottom={1}>
+            <ComposerPrimitive.Input
+              submitOnEnter
+              placeholder={
+                "Ask anything... \u201cWhat is the tech stack of this project?\u201d"
+              }
+              autoFocus
+            />
+            <AuiIf condition={(s) => s.thread.isRunning}>
+              <ComposerPrimitive.Cancel>
+                <Text color={C.cancel}>{"  esc"}</Text>
+              </ComposerPrimitive.Cancel>
+            </AuiIf>
+          </Box>
 
-        {/* 第二行：Build · ModelName Provider · high */}
-        <StatusBarPrimitive.Root gap={0}>
-          <Text color={C.userLabel} bold>
-            {"Build"}
-          </Text>
-          <Text color={C.dim}>{"·  "}</Text>
-          <Text bold color="white">
-            {modelName
-              .split("-")
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-              .join(" ")}
-          </Text>
-          <Text color={C.dim}>{"  DeepSeek  ·  "}</Text>
-          <Text color={C.high} bold>
-            {"high"}
-          </Text>
-        </StatusBarPrimitive.Root>
+          {/* 第二行：Build · ModelName Provider · high */}
+          <StatusBarPrimitive.Root gap={0}>
+            <Text color={C.userLabel} bold>
+              {"Build"}
+            </Text>
+            <Text color={C.dim}>{"\u00b7  "}</Text>
+            <Text bold color="white">
+              {modelName
+                .split("-")
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(" ")}
+            </Text>
+            <Text color={C.dim}>{"  DeepSeek  \u00b7  "}</Text>
+            <Text color={C.high} bold>
+              {"high"}
+            </Text>
+          </StatusBarPrimitive.Root>
+        </Box>
       </Box>
 
       {/* 快捷键提示行（右对齐） */}
       <Box justifyContent="flex-end" marginTop={1}>
         <Text bold color={C.shortcut}>
-          {"tab"}
+          {"/"}
         </Text>
         <Text color={C.dim}>{" commands   "}</Text>
         <Text bold color={C.shortcut}>
@@ -326,52 +329,59 @@ const Composer = () => {
   });
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" marginTop={2}>
       <SlashPanel buffer={composerText} selectedIndex={slashIndex} />
-      <Box
-        flexDirection="column"
-        paddingLeft={2}
-        paddingRight={3}
-        paddingTop={1}
-        paddingBottom={1}
-        borderStyle="single"
-        borderColor={C.accentLine}
-        borderTop={false}
-        borderRight={false}
-        borderBottom={false}
-        borderLeft={true}
-      >
-        <Box marginBottom={1}>
-          <ComposerPrimitive.Input
-            submitOnEnter
-            placeholder="输入消息，或 / 查看命令..."
-            autoFocus
-          />
-          <AuiIf condition={(s) => s.thread.isRunning}>
-            <ComposerPrimitive.Cancel>
-              <Text color={C.cancel}>{"  esc 中断"}</Text>
-            </ComposerPrimitive.Cancel>
-          </AuiIf>
+      {/* 左侧竖线 + 灰色背景输入区域 */}
+      <Box flexDirection="row">
+        <Box
+          flexDirection="column"
+          flexGrow={1}
+          paddingX={1}
+          paddingTop={0}
+          paddingBottom={0}
+          backgroundColor="#272626ff"
+          borderStyle="bold"
+          borderLeft={true}
+          borderRight={false}
+          borderTop={false}
+          borderBottom={false}
+          borderColor={C.accentLine}
+        >
+          <Box marginBottom={1}>
+            <ComposerPrimitive.Input
+              submitOnEnter
+              placeholder="输入消息，或 / 查看命令..."
+              autoFocus
+            />
+            <AuiIf condition={(s) => s.thread.isRunning}>
+              <ComposerPrimitive.Cancel>
+                <Text color={C.cancel}>{"  esc 中断"}</Text>
+              </ComposerPrimitive.Cancel>
+            </AuiIf>
+          </Box>
+          <ComposerFooter />
         </Box>
-        <ComposerFooter />
       </Box>
     </Box>
   );
 };
 
 // ── Thread 主组件 ─────────────────────────────────────────────
+// ── Thread 主组件 ───────────────────────────────────────────────────
 export const Thread = () => (
-  <ThreadPrimitive.Root>
+  <ThreadPrimitive.Root flexDirection="column">
     {/* 空状态：OpenCode 风格首页 */}
     <AuiIf condition={(s) => s.thread.isEmpty}>
       <HomePage />
     </AuiIf>
 
-    {/* 消息列表 */}
-    <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
-
-    {/* 加载动画 */}
-    <Loading />
+    {/* 消息列表：flexGrow 占满剩余空间，推动输入框至底部 */}
+    <Box flexGrow={1} flexDirection="column">
+      <ThreadPrimitive.Messages
+        components={{ UserMessage, AssistantMessage }}
+      />
+      <Loading />
+    </Box>
 
     {/* 输入区域：空状态时由 HomePage 内嵌 ComposerPrimitive.Input，有消息后用 Composer */}
     <AuiIf condition={(s) => !s.thread.isEmpty}>

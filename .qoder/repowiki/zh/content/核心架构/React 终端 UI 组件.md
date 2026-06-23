@@ -13,28 +13,40 @@
 - [src/agent/style.ts](file://src/agent/style.ts)
 </cite>
 
+## 更新摘要
+**变更内容**
+- Thread 组件从简单文本界面升级为复杂的图形界面
+- 新增 figlet 字体支持和渐变色彩系统
+- 引入新的状态栏设计和 OpenCode 风格界面
+- 更新色彩令牌系统和视觉设计规范
+
 ## 目录
 1. [简介](#简介)
 2. [项目结构](#项目结构)
 3. [核心组件](#核心组件)
 4. [架构概览](#架构概览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能考虑](#性能考虑)
-8. [故障排除指南](#故障排除指南)
-9. [结论](#结论)
+6. [视觉设计系统](#视觉设计系统)
+7. [依赖关系分析](#依赖关系分析)
+8. [性能考虑](#性能考虑)
+9. [故障排除指南](#故障排除指南)
+10. [结论](#结论)
 
 ## 简介
 
 onionCode 是一个基于 React 和 Ink 的 CLI AI 助手终端 UI 组件。该项目提供了一个现代化的终端界面，支持流式响应、Slash 命令面板、主题化显示等功能。系统集成了 LangChain 和 OpenAI 模型，提供了完整的 AI 助手功能。
+
+**更新** 项目已从简单的文本界面升级为复杂的图形界面，包含 figlet 标题、渐变色彩系统和新的状态栏设计等重大视觉重构。
 
 该组件的核心特点包括：
 - 基于 React Ink 的终端 UI 渲染
 - 流式 AI 响应处理
 - Slash 命令系统
 - 会话管理和持久化
-- 主题化色彩系统
-- 工具调用支持
+- **全新的图形界面设计**
+- **渐变色彩系统**
+- **figlet 字体支持**
+- **OpenCode 风格视觉设计**
 
 ## 项目结构
 
@@ -53,6 +65,8 @@ AIMsg[AI 消息组件]
 Loading[加载状态组件]
 Composer[输入组件]
 SlashPanel[Slash 命令面板]
+HomePage[OpenCode 风格首页]
+StatusBar[状态栏组件]
 end
 subgraph "适配器层"
 Adapter[LangChain 适配器]
@@ -66,25 +80,31 @@ end
 subgraph "样式层"
 Style[样式系统]
 Theme[主题配置]
+Gradient[渐变系统]
+Figlet[字体系统]
 end
 CLI --> App
 App --> Thread
+Thread --> HomePage
 Thread --> UserMsg
 Thread --> AIMsg
 Thread --> Loading
 Thread --> Composer
 Composer --> SlashPanel
+Composer --> StatusBar
 Thread --> Adapter
 Adapter --> Agent
 Agent --> Tools
 App --> Style
 Thread --> Theme
+Theme --> Gradient
+Theme --> Figlet
 Commands --> SlashPanel
 ```
 
 **图表来源**
 - [src/agent/ui/App.tsx:1-30](file://src/agent/ui/App.tsx#L1-L30)
-- [src/agent/ui/Thread.tsx:1-363](file://src/agent/ui/Thread.tsx#L1-L363)
+- [src/agent/ui/Thread.tsx:1-382](file://src/agent/ui/Thread.tsx#L1-L382)
 - [src/agent/ui/adapter.ts:1-87](file://src/agent/ui/adapter.ts#L1-L87)
 
 **章节来源**
@@ -122,13 +142,19 @@ App --> Box : "使用"
 
 ### 线程管理组件
 
-Thread 组件负责管理整个对话流程，包括消息展示、输入处理和状态管理。
+**更新** Thread 组件经过重大重构，现在包含完整的图形界面系统。
 
 ```mermaid
 classDiagram
 class Thread {
 +isEmpty : boolean
 +isRunning : boolean
++render() JSX.Element
+}
+class HomePage {
++figletTitle : string
++composer : Composer
++statusBar : StatusBar
 +render() JSX.Element
 }
 class UserMessage {
@@ -154,18 +180,29 @@ class Composer {
 +footer : StatusBar
 +render() JSX.Element
 }
+class StatusBar {
++modelIcon : Text
++modelLabel : Text
++messageCount : MessageCount
++render() JSX.Element
+}
+Thread --> HomePage : "空状态"
 Thread --> UserMessage : "展示"
 Thread --> AssistantMessage : "展示"
 Thread --> Loading : "显示"
 Thread --> Composer : "输入"
+Composer --> StatusBar : "底部状态栏"
+HomePage --> StatusBar : "状态栏"
 ```
 
 **图表来源**
-- [src/agent/ui/Thread.tsx:344-362](file://src/agent/ui/Thread.tsx#L344-L362)
+- [src/agent/ui/Thread.tsx:210-304](file://src/agent/ui/Thread.tsx#L210-L304)
+- [src/agent/ui/Thread.tsx:306-360](file://src/agent/ui/Thread.tsx#L306-L360)
 
 **章节来源**
 - [src/agent/ui/App.tsx:15-29](file://src/agent/ui/App.tsx#L15-L29)
-- [src/agent/ui/Thread.tsx:344-362](file://src/agent/ui/Thread.tsx#L344-L362)
+- [src/agent/ui/Thread.tsx:210-304](file://src/agent/ui/Thread.tsx#L210-L304)
+- [src/agent/ui/Thread.tsx:306-360](file://src/agent/ui/Thread.tsx#L306-L360)
 
 ## 架构概览
 
@@ -177,11 +214,15 @@ subgraph "表现层 (Presentation Layer)"
 UI[React Ink 组件]
 Styles[样式系统]
 Themes[主题配置]
+Gradient[渐变系统]
+Figlet[字体系统]
 end
 subgraph "业务逻辑层 (Business Logic Layer)"
 Thread[Thread 管理]
 Commands[Slash 命令]
 Input[输入处理]
+HomePage[OpenCode 风格首页]
+StatusBar[状态栏组件]
 end
 subgraph "适配器层 (Adapter Layer)"
 LangChainAdapter[LangChain 适配器]
@@ -197,8 +238,10 @@ SQLite[(SQLite 数据库)]
 Checkpoints[检查点]
 end
 UI --> Thread
+Thread --> HomePage
 Thread --> Commands
 Thread --> Input
+Thread --> StatusBar
 Thread --> LangChainAdapter
 LangChainAdapter --> Agent
 Agent --> Tools
@@ -207,6 +250,8 @@ Memory --> SQLite
 Memory --> Checkpoints
 Styles --> UI
 Themes --> UI
+Gradient --> UI
+Figlet --> UI
 ```
 
 **图表来源**
@@ -303,6 +348,77 @@ Note over CLI,Agent : 支持多种运行模式
 - [src/agent/slash_commands.ts:21-77](file://src/agent/slash_commands.ts#L21-L77)
 - [src/agent/cli.ts:28-59](file://src/agent/cli.ts#L28-L59)
 
+## 视觉设计系统
+
+**新增** 系统引入了完整的视觉设计系统，包含图形界面、渐变色彩和字体支持。
+
+### 图形界面设计
+
+**更新** Thread 组件现在包含完整的图形界面设计，采用 OpenCode 风格：
+
+```mermaid
+graph TB
+subgraph "OpenCode 风格界面"
+BigTitle[大标题 - figlet Doom 字体]
+InputArea[输入区域 - 主题色边框]
+StatusBar[状态栏 - Build · ModelName Provider]
+ShortcutTips[快捷键提示 - 右对齐]
+TipRow[Tip 行 - 输入 / 打开命令面板]
+Version[版本号 - 右下角]
+end
+BigTitle --> InputArea
+InputArea --> StatusBar
+InputArea --> ShortcutTips
+TipRow --> Version
+```
+
+**图表来源**
+- [src/agent/ui/Thread.tsx:210-304](file://src/agent/ui/Thread.tsx#L210-L304)
+
+### 渐变色彩系统
+
+**新增** 实现了完整的渐变色彩系统，支持动态颜色插值：
+
+```mermaid
+flowchart TD
+Start[开始] --> GetText[获取文本]
+GetText --> SplitLines[分割为多行]
+SplitLines --> CalcRatio[计算渐变比例]
+CalcRatio --> RGB1[提取起始色RGB]
+CalcRatio --> RGB2[提取结束色RGB]
+RGB1 --> Interpolate[插值计算中间色]
+RGB2 --> Interpolate
+Interpolate --> Hex[转换为十六进制]
+Hex --> ApplyColor[应用到每行]
+ApplyColor --> JoinText[合并文本]
+JoinText --> End[结束]
+```
+
+**图表来源**
+- [src/agent/ui/Thread.tsx:31-50](file://src/agent/ui/Thread.tsx#L31-L50)
+
+### 色彩令牌系统
+
+**新增** 定义了完整的色彩令牌系统，采用蓝/橙双色主题：
+
+| 颜色令牌 | 颜色值 | 用途 | 示例 |
+|---------|--------|------|------|
+| userLabel | #3b82f6 | 用户名/Build 标签 | `用户标签` |
+| aiLabel | #3b82f6 | AI 状态图标 | `AI 状态` |
+| aiReason | #f59e0b | Thought 推理行 | `推理内容` |
+| spinner | #f59e0b | 加载 spinner | `加载动画` |
+| slashBg | #1e3a5f | slash 高亮背景 | `命令面板` |
+| slashFg | white | slash 高亮文字 | `命令名称` |
+| accentLine | #3b82f6 | 左侧竖线 | `输入框边框` |
+| modelIcon | #3b82f6 | 模型图标 | `模型状态` |
+| cancel | #f87171 | ESC 中断 | `取消按钮` |
+| tipDot | #f59e0b | Tip 点 | `提示标记` |
+| high | #f59e0b | high 标签 | `高级功能` |
+
+**章节来源**
+- [src/agent/ui/Thread.tsx:31-80](file://src/agent/ui/Thread.tsx#L31-L80)
+- [src/agent/ui/Thread.tsx:210-304](file://src/agent/ui/Thread.tsx#L210-L304)
+
 ## 依赖关系分析
 
 项目依赖关系复杂但结构清晰，主要依赖包括：
@@ -392,6 +508,7 @@ Cleanup --> End[结束]
 - **会话缓存**：使用 SQLite 存储会话历史
 - **字体缓存**：预加载 figlet 字体避免重复加载
 - **样式缓存**：颜色和主题配置的内存缓存
+- **渐变缓存**：计算结果的临时缓存
 
 ## 故障排除指南
 
@@ -404,6 +521,8 @@ Cleanup --> End[结束]
 | 配额错误 | insufficient_quota 429 | API 额度不足 | 检查账户余额和使用情况 |
 | 超时错误 | ETIMEDOUT timeout | 网络连接问题 | 检查网络连接后重试 |
 | 递归限制 | Recursion limit | Agent 执行步数超限 | 将复杂任务分解为多个小步骤 |
+| 字体加载失败 | figlet font error | Doom 字体不可用 | 系统自动回退到 Standard 字体 |
+| 渐变渲染异常 | color interpolation error | 颜色值格式错误 | 检查色彩令牌配置 |
 
 ### 调试技巧
 
@@ -411,6 +530,8 @@ Cleanup --> End[结束]
 2. **验证环境变量**：确认 OPENAI_API_KEY 和 OPENAI_MODEL 设置正确
 3. **检查数据库连接**：验证 .data/checkpointer.db 文件可访问性
 4. **测试网络连接**：确保能够访问 API 端点
+5. **验证字体加载**：检查 figlet 字体是否正确加载
+6. **调试渐变效果**：验证色彩令牌和插值算法
 
 **章节来源**
 - [src/agent/cli.ts:13-26](file://src/agent/cli.ts#L13-L26)
@@ -419,13 +540,18 @@ Cleanup --> End[结束]
 
 onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。通过精心设计的架构和丰富的功能特性，该组件为用户提供了流畅的 AI 助手体验。
 
+**更新** 经过重大视觉重构，系统现已具备完整的图形界面能力，包括：
+
 ### 主要优势
 
 1. **现代化界面**：基于 React Ink 的优雅终端界面
 2. **高效性能**：流式处理和增量渲染提升响应速度
 3. **丰富功能**：完整的 Slash 命令系统和会话管理
-4. **良好扩展性**：模块化设计便于功能扩展
-5. **稳定可靠**：完善的错误处理和资源管理
+4. **全新视觉设计**：OpenCode 风格的图形界面
+5. **渐变色彩系统**：动态颜色插值和主题化显示
+6. **figlet 字体支持**：大标题和品牌标识
+7. **良好的扩展性**：模块化设计便于功能扩展
+8. **稳定可靠**：完善的错误处理和资源管理
 
 ### 技术亮点
 
@@ -433,5 +559,7 @@ onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。
 - **主题系统**：灵活的颜色配置和渐变效果
 - **工具集成**：丰富的工具调用能力和安全性保障
 - **会话持久化**：基于 SQLite 的智能会话管理
+- **字体系统**：figlet 字体支持和自动回退机制
+- **状态栏设计**：StatusBarPrimitive 实现的现代化底部状态行
 
 该组件为构建高质量的 CLI AI 应用提供了优秀的参考实现，其设计理念和架构模式值得在类似项目中借鉴和学习。

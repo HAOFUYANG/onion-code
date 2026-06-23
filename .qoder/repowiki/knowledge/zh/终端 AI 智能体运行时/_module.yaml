@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: OnionCode AI 智能体平台
+title: 终端 AI 智能体运行时
 scope:
     - '**'
 source_files:
