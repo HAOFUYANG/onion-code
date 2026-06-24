@@ -5,8 +5,10 @@
 - [src/agent/cli.ts](file://src/agent/cli.ts)
 - [src/agent/ui/App.tsx](file://src/agent/ui/App.tsx)
 - [src/agent/ui/Thread.tsx](file://src/agent/ui/Thread.tsx)
+- [src/agent/ui/SlashPanel.tsx](file://src/agent/ui/SlashPanel.tsx)
 - [src/agent/ui/adapter.ts](file://src/agent/ui/adapter.ts)
 - [src/agent/slash_commands.ts](file://src/agent/slash_commands.ts)
+- [src/agent/sessions.ts](file://src/agent/sessions.ts)
 - [src/agent/agent.ts](file://src/agent/agent.ts)
 - [src/agent/style.ts](file://src/agent/style.ts)
 - [package.json](file://package.json)
@@ -14,10 +16,12 @@
 
 ## 更新摘要
 **变更内容**
-- CLI 简化：移除了 splashScreen 启动画面功能，启动过程更加直接化
-- 保持现代化终端UI：基于 @assistant-ui/react-ink 的界面设计维持不变
-- 保留斜杠命令系统和交互功能：/config、/skill、/exit 等命令功能完整
-- 优化启动流程：减少不必要的初始化步骤，提升启动速度
+- 完整实现Slash命令系统：包括命令注册、匹配、执行和键盘导航支持
+- 增强会话管理能力：支持会话查询、切换、新建和历史恢复
+- 键盘导航支持：实现Tab补全、上下箭头选择、Enter执行等交互功能
+- 会话持久化：基于SQLite的检查点存储，支持thread_id恢复历史对话
+- 现代化终端UI：基于@assistant-ui/react-ink的组件化设计
+- 流式对话与ESC中断：支持实时流式输出和即时中断
 
 ## 目录
 1. [简介](#简介)
@@ -32,17 +36,19 @@
 10. [附录：使用示例与最佳实践](#附录使用示例与最佳实践)
 
 ## 简介
-本文件面向使用者与开发者，系统性阐述 CLI 界面的设计与实现，覆盖命令行交互、React Ink界面、斜杠命令系统（/config、/skill、/exit 等）、用户输入处理流程（文本输入、文件操作、代码执行）以及实际使用示例与最佳实践。目标是帮助用户高效、安全地使用 CLI 工具完成从日常问答到代码执行与文件管理的任务。
+本文件面向使用者与开发者，系统性阐述 CLI 界面的设计与实现，覆盖命令行交互、React Ink界面、Slash命令系统（/config、/skill、/exit 等）、用户输入处理流程（文本输入、文件操作、代码执行）以及实际使用示例与最佳实践。目标是帮助用户高效、安全地使用 CLI 工具完成从日常问答到代码执行与文件管理的任务。
 
-**更新** CLI 已简化启动流程，移除了 splashScreen 启动画面功能，启动过程更加直接化，但仍保持现代化的终端交互体验。
+**更新** CLI 已实现完整的Slash命令系统和会话管理功能，提供现代化的终端交互体验，支持键盘导航、会话恢复和丰富的命令面板功能。
 
 ## 项目结构
-CLI 子系统围绕"命令解析 → React Ink界面 → 流式对话 → 斜杠命令处理 → 会话持久化"展开，主要文件职责如下：
+CLI 子系统围绕"命令解析 → React Ink界面 → 流式对话 → Slash命令处理 → 会话持久化"展开，主要文件职责如下：
 - 入口与命令定义：cli.ts
 - React Ink界面根组件：ui/App.tsx
 - 对话界面组件：ui/Thread.tsx
+- Slash命令面板组件：ui/SlashPanel.tsx
 - LangGraph适配器：ui/adapter.ts
-- 斜杠命令与上下文：slash_commands.ts
+- Slash命令与上下文：slash_commands.ts
+- 会话管理：sessions.ts
 - 对话与流式输出：agent.ts
 - 视觉风格与状态提示：style.ts
 - 包与二进制入口：package.json
@@ -51,8 +57,10 @@ CLI 子系统围绕"命令解析 → React Ink界面 → 流式对话 → 斜杠
 graph TB
 CLI["cli.ts<br/>命令入口与交互循环"] --> APP["ui/App.tsx<br/>React Ink根组件"]
 APP --> THREAD["ui/Thread.tsx<br/>对话界面组件"]
+THREAD --> SLASHPANEL["ui/SlashPanel.tsx<br/>Slash命令面板"]
 THREAD --> ADAPTER["ui/adapter.ts<br/>LangGraph适配器"]
-THREAD --> SLASH["slash_commands.ts<br/>斜杠命令定义与匹配"]
+THREAD --> SLASH["slash_commands.ts<br/>Slash命令定义与匹配"]
+THREAD --> SESSIONS["sessions.ts<br/>会话管理与查询"]
 THREAD --> AGENT["agent.ts<br/>流式对话与模型调用"]
 THREAD --> STYLE["style.ts<br/>品牌与状态样式"]
 AGENT --> TOOLS["工具集合"]
@@ -60,27 +68,30 @@ AGENT --> TOOLS["工具集合"]
 
 **图表来源**
 - [src/agent/cli.ts:1-60](file://src/agent/cli.ts#L1-L60)
-- [src/agent/ui/App.tsx:1-30](file://src/agent/ui/App.tsx#L1-L30)
-- [src/agent/ui/Thread.tsx:1-228](file://src/agent/ui/Thread.tsx#L1-L228)
-- [src/agent/ui/adapter.ts:1-87](file://src/agent/ui/adapter.ts#L1-L87)
+- [src/agent/ui/App.tsx:1-60](file://src/agent/ui/App.tsx#L1-L60)
+- [src/agent/ui/Thread.tsx:1-517](file://src/agent/ui/Thread.tsx#L1-L517)
+- [src/agent/ui/SlashPanel.tsx:1-53](file://src/agent/ui/SlashPanel.tsx#L1-L53)
+- [src/agent/ui/adapter.ts:1-84](file://src/agent/ui/adapter.ts#L1-L84)
 - [src/agent/slash_commands.ts:1-92](file://src/agent/slash_commands.ts#L1-L92)
+- [src/agent/sessions.ts:1-172](file://src/agent/sessions.ts#L1-L172)
 - [src/agent/agent.ts:1-181](file://src/agent/agent.ts#L1-L181)
 - [src/agent/style.ts:1-218](file://src/agent/style.ts#L1-L218)
 
 ## 核心组件
 - 命令入口与交互循环：负责解析命令、启动React Ink界面、处理ask单轮问答、展示错误与状态。
-- React Ink界面系统：基于@assistant-ui/react-ink构建的现代化终端UI，提供流式对话、斜杠命令面板、状态显示等功能。
-- 斜杠命令系统：统一的命令注册表与匹配逻辑，支持别名、帮助、会话管理、配置中心等。
+- React Ink界面系统：基于@assistant-ui/react-ink构建的现代化终端UI，提供流式对话、Slash命令面板、状态显示等功能。
+- Slash命令系统：统一的命令注册表与匹配逻辑，支持别名、帮助、会话管理、配置中心等。
+- 会话管理：基于SQLite的检查点存储，支持会话查询、切换、新建和历史恢复。
 - 流式对话引擎：基于LangGraph的流式输出，支持中断、历史续接与工具调用。
-- 会话与持久化：SQLite检查点存储，按thread_id恢复历史对话。
 - 配置中心与Python环境：交互式配置Python运行环境、镜像源、自动安装策略，并按需初始化虚拟环境与依赖。
 - 工具集与安全：文件读写、代码执行（JS/Python）、系统命令、网络检索等；内置安全扫描与危险API阻断。
 
 **章节来源**
 - [src/agent/cli.ts:28-60](file://src/agent/cli.ts#L28-L60)
-- [src/agent/ui/App.tsx:15-30](file://src/agent/ui/App.tsx#L15-L30)
-- [src/agent/ui/Thread.tsx:94-228](file://src/agent/ui/Thread.tsx#L94-L228)
+- [src/agent/ui/App.tsx:17-60](file://src/agent/ui/App.tsx#L17-L60)
+- [src/agent/ui/Thread.tsx:169-350](file://src/agent/ui/Thread.tsx#L169-L350)
 - [src/agent/slash_commands.ts:21-92](file://src/agent/slash_commands.ts#L21-L92)
+- [src/agent/sessions.ts:60-172](file://src/agent/sessions.ts#L60-L172)
 - [src/agent/agent.ts:106-181](file://src/agent/agent.ts#L106-L181)
 - [src/agent/style.ts:129-137](file://src/agent/style.ts#L129-L137)
 
@@ -108,9 +119,9 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 
 **图表来源**
 - [src/agent/cli.ts:47-60](file://src/agent/cli.ts#L47-L60)
-- [src/agent/ui/App.tsx:15-30](file://src/agent/ui/App.tsx#L15-L30)
-- [src/agent/ui/Thread.tsx:148-228](file://src/agent/ui/Thread.tsx#L148-L228)
-- [src/agent/ui/adapter.ts:16-87](file://src/agent/ui/adapter.ts#L16-L87)
+- [src/agent/ui/App.tsx:17-60](file://src/agent/ui/App.tsx#L17-L60)
+- [src/agent/ui/Thread.tsx:496-517](file://src/agent/ui/Thread.tsx#L496-L517)
+- [src/agent/ui/adapter.ts:13-84](file://src/agent/ui/adapter.ts#L13-L84)
 - [src/agent/agent.ts:106-181](file://src/agent/agent.ts#L106-L181)
 
 ## 详细组件分析
@@ -120,7 +131,6 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 - React Ink界面：默认模式下渲染App组件，提供完整的交互式聊天界面。
 - ESC中断：在React Ink界面中通过AbortSignal实现中断，输出"已停止"提示。
 - 错误消息格式化：改进了错误消息格式化，针对不同异常（内容安全、认证、配额、递归限制、超时）给出友好提示。
-- **更新** 启动流程简化：移除了splashScreen启动画面，直接渲染React Ink应用，提升启动速度。
 
 **章节来源**
 - [src/agent/cli.ts:28-60](file://src/agent/cli.ts#L28-L60)
@@ -128,22 +138,57 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 ### React Ink界面系统（ui/App.tsx）
 - 根组件：App组件作为React Ink应用的入口，提供全局状态管理和输入处理。
 - Runtime集成：使用useLocalRuntime和langchainAdapter集成LangGraph对话引擎。
+- 会话管理：支持threadId生成、会话切换和历史恢复。
 - 退出处理：通过useInput监听Ctrl+C组合键，优雅关闭应用。
 
 **章节来源**
-- [src/agent/ui/App.tsx:15-30](file://src/agent/ui/App.tsx#L15-L30)
+- [src/agent/ui/App.tsx:17-60](file://src/agent/ui/App.tsx#L17-L60)
 
 ### 对话界面组件（ui/Thread.tsx）
-- 主题色彩系统：定义了完整的色彩方案，包括用户消息、AI回复、加载状态、斜杠命令等。
+- 主题色彩系统：定义了完整的色彩方案，包括用户消息、AI回复、加载状态、Slash命令等。
 - 用户消息组件：UserMessage组件显示用户输入，支持多行文本和主题样式。
 - AI消息组件：AssistantMessage组件显示AI回复，支持Markdown渲染和推理过程显示。
 - 加载状态：Loading组件显示思考中的动画效果和计时器。
 - Slash命令面板：SlashPanel组件提供命令建议和选择功能。
-- Composer输入框：Composer组件整合输入框、状态行和斜杠命令面板。
+- Composer输入框：Composer组件整合输入框、状态行和Slash命令面板。
 - 状态栏：ComposerFooter组件显示模型名称、消息数量和运行状态。
+- 键盘导航：支持Tab补全、上下箭头选择、Enter执行、ESC关闭等交互。
 
 **章节来源**
-- [src/agent/ui/Thread.tsx:17-228](file://src/agent/ui/Thread.tsx#L17-L228)
+- [src/agent/ui/Thread.tsx:169-350](file://src/agent/ui/Thread.tsx#L169-L350)
+
+### Slash命令面板组件（ui/SlashPanel.tsx）
+- 命令建议：根据输入前缀动态显示匹配的Slash命令。
+- 选择高亮：选中命令显示橙色背景高亮，未选中显示dim色。
+- 键盘导航：支持Tab补全、上下箭头选择、Enter执行、ESC关闭。
+- 命令描述：右侧显示命令的详细描述信息。
+
+**章节来源**
+- [src/agent/ui/SlashPanel.tsx:15-53](file://src/agent/ui/SlashPanel.tsx#L15-L53)
+
+### Slash命令系统（slash_commands.ts）
+- 命令注册：统一的SlashCommand接口，支持name、aliases、description、handler。
+- 内置命令：
+  - /config：打开配置中心（Python运行环境、镜像源、自动安装策略）。
+  - /rewind <thread_id>：切换到指定历史会话。
+  - /sessions：查看最近20条会话。
+  - /new：新建会话。
+  - /theme：占位命令（提示暂未实现）。
+  - /help：打印可用Slash命令。
+  - /exit：退出程序。
+- 命令匹配：根据输入前缀与别名进行筛选，支持Tab补全与上下选择。
+
+**章节来源**
+- [src/agent/slash_commands.ts:21-92](file://src/agent/slash_commands.ts#L21-L92)
+
+### 会话管理系统（sessions.ts）
+- 会话查询：查询最近20条会话，提取thread_id、最后用户输入和时间信息。
+- 时间格式化：将UUIDv7时间戳转换为相对时间格式。
+- 会话验证：校验thread_id是否存在，确保会话有效性。
+- 表格渲染：使用cli-table3渲染会话列表表格，支持中文字符。
+
+**章节来源**
+- [src/agent/sessions.ts:60-172](file://src/agent/sessions.ts#L60-L172)
 
 ### LangGraph适配器（ui/adapter.ts）
 - 适配器设计：将runAgentStream的回调风格转换为assistant-ui要求的async generator风格。
@@ -152,22 +197,7 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 - 错误处理：捕获流式请求中的错误并抛出给UI层。
 
 **章节来源**
-- [src/agent/ui/adapter.ts:16-87](file://src/agent/ui/adapter.ts#L16-L87)
-
-### 斜杠命令系统（slash_commands.ts）
-- 命令注册：统一的SlashCommand接口，支持name、aliases、description、handler。
-- 内置命令：
-  - /config：打开配置中心（Python运行环境、镜像源、自动安装策略）。
-  - /rewind <thread_id>：切换到指定历史会话。
-  - /sessions：查看最近20条会话。
-  - /new：新建会话。
-  - /theme：占位命令（提示暂未实现）。
-  - /help：打印可用斜杠命令。
-  - /exit：退出程序。
-- 命令匹配：根据输入前缀与别名进行筛选，支持Tab补全与上下选择。
-
-**章节来源**
-- [src/agent/slash_commands.ts:21-92](file://src/agent/slash_commands.ts#L21-L92)
+- [src/agent/ui/adapter.ts:13-84](file://src/agent/ui/adapter.ts#L13-L84)
 
 ### 流式对话与ESC中断（agent.ts）
 - 流式输出：基于LangGraph的streamMode="messages"，逐个token回调onToken。
@@ -195,10 +225,10 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 - 详细信息截断：对工具调用的详细信息进行截断处理，避免过长信息影响界面显示。
 
 **章节来源**
-- [src/agent/style.ts:85-137](file://src/agent/style.ts#L85-L137)
+- [src/agent/style.ts:105-127](file://src/agent/style.ts#L105-L127)
 
 ## 依赖关系分析
-- CLI依赖React Ink界面、斜杠命令、对话引擎、样式模块。
+- CLI依赖React Ink界面、Slash命令、对话引擎、样式模块。
 - React Ink界面依赖LangGraph适配器和slash_commands。
 - 对话引擎依赖工具集模块。
 - 工具集依赖安全扫描模块。
@@ -207,8 +237,10 @@ note over THREAD : ESC 设置 AbortSignal 中断流式输出
 graph LR
 CLI["cli.ts"] --> APP["ui/App.tsx"]
 APP --> THREAD["ui/Thread.tsx"]
+THREAD --> SLASHPANEL["ui/SlashPanel.tsx"]
 THREAD --> ADAPTER["ui/adapter.ts"]
 THREAD --> SLASH["slash_commands.ts"]
+THREAD --> SESSIONS["sessions.ts"]
 THREAD --> AGENT["agent.ts"]
 THREAD --> STYLE["style.ts"]
 CLI --> AGENT
@@ -217,10 +249,12 @@ AGENT --> TOOLS["工具集合"]
 
 **图表来源**
 - [src/agent/cli.ts:1-60](file://src/agent/cli.ts#L1-L60)
-- [src/agent/ui/App.tsx:1-30](file://src/agent/ui/App.tsx#L1-L30)
-- [src/agent/ui/Thread.tsx:1-228](file://src/agent/ui/Thread.tsx#L1-L228)
-- [src/agent/ui/adapter.ts:1-87](file://src/agent/ui/adapter.ts#L1-L87)
+- [src/agent/ui/App.tsx:1-60](file://src/agent/ui/App.tsx#L1-L60)
+- [src/agent/ui/Thread.tsx:1-517](file://src/agent/ui/Thread.tsx#L1-L517)
+- [src/agent/ui/SlashPanel.tsx:1-53](file://src/agent/ui/SlashPanel.tsx#L1-L53)
+- [src/agent/ui/adapter.ts:1-84](file://src/agent/ui/adapter.ts#L1-L84)
 - [src/agent/slash_commands.ts:1-92](file://src/agent/slash_commands.ts#L1-L92)
+- [src/agent/sessions.ts:1-172](file://src/agent/sessions.ts#L1-L172)
 - [src/agent/agent.ts:1-181](file://src/agent/agent.ts#L1-L181)
 - [src/agent/style.ts:1-218](file://src/agent/style.ts#L1-L218)
 
@@ -228,11 +262,12 @@ AGENT --> TOOLS["工具集合"]
 - 流式输出：边生成边显示，降低感知延迟。
 - ESC中断：即时终止长文本生成，提升交互效率。
 - 现代化界面：基于React Ink的组件化设计，提供更好的用户体验。
-- 斜杠命令面板：智能命令建议和选择功能。
+- Slash命令面板：智能命令建议和选择功能。
+- 键盘导航：支持Tab补全、上下箭头选择、Enter执行等交互。
+- 会话管理：支持会话查询、切换、新建和历史恢复。
 - 状态显示：实时显示模型名称、消息数量和运行状态。
 - 主题色彩：统一的色彩方案，提升界面美观度。
 - 错误处理：友好的错误消息格式化，帮助用户快速定位问题。
-- **更新** 启动优化：移除splashScreen后，应用启动速度更快，用户体验更流畅。
 
 ## 故障排查指南
 - **API Key/认证失败**：检查OPENAI_API_KEY或代理配置，参考错误格式化提示。
@@ -241,20 +276,19 @@ AGENT --> TOOLS["工具集合"]
 - **网络超时**：检查网络与代理，重试请求。
 - **递归限制**：任务过于复杂，建议拆分为多步执行。
 - **ESC不生效**：确认在React Ink界面中运行，检查AbortSignal设置。
-- **/rewind无法切换**：先用/sessions获取thread_id，再执行/rewind <thread_id>。
+- **Slash命令无效**：确认命令格式正确，使用/help查看可用命令。
+- **会话切换失败**：先用/sessions获取thread_id，再执行/rewind <thread_id>。
 - **Python/Node不可用**：/config中启用自动安装或手动安装对应运行时。
 - **工具执行失败**：检查危险API检测规则，避免使用被阻断的操作。
 - **界面显示异常**：确认终端支持ANSI转义序列，检查React Ink依赖版本。
-- **启动缓慢**：确认已移除splashScreen，如仍有问题检查网络连接和依赖安装。
+- **启动缓慢**：检查网络连接和依赖安装。
 
 **章节来源**
 - [src/agent/cli.ts:13-26](file://src/agent/cli.ts#L13-L26)
 - [src/agent/slash_commands.ts:21-92](file://src/agent/slash_commands.ts#L21-L92)
 
 ## 结论
-该CLI界面以React Ink为基础实现了现代化的终端交互体验，结合斜杠命令系统与会话持久化，既满足日常问答，又支持文件与代码执行等高级能力。相比之前的版本，最新的改进包括移除了splashScreen启动画面，使启动过程更加直接化和高效，同时保持了原有的现代化界面设计、增强的工具日志功能以提供更好的执行过程可视化，以及优化的错误处理机制。
-
-**更新** CLI 简化策略显著提升了用户体验：移除不必要的启动画面后，应用启动速度更快，界面加载更直接，用户可以更快地进入实际的对话交互环节。这一变化体现了现代CLI工具的发展趋势——简洁、高效、专注核心功能。
+该CLI界面以React Ink为基础实现了现代化的终端交互体验，结合完整的Slash命令系统与会话持久化，既满足日常问答，又支持文件与代码执行等高级能力。最新的改进包括完整的Slash命令系统实现、会话管理能力增强、键盘导航支持等，提供了更加丰富和高效的交互体验。
 
 ## 附录：使用示例与最佳实践
 
@@ -266,12 +300,12 @@ AGENT --> TOOLS["工具集合"]
 **章节来源**
 - [src/agent/cli.ts:28-60](file://src/agent/cli.ts#L28-L60)
 
-### 斜杠命令速览与示例
+### Slash命令速览与示例
 - /config：打开配置中心，设置Python镜像源、自动安装策略，可立即初始化常用数据分析包。
 - /sessions：查看最近20条会话，复制thread_id。
 - /rewind <thread_id>：切换到指定历史会话继续对话。
 - /new：新建会话，清空历史。
-- /help：列出所有斜杠命令及简要说明。
+- /help：列出所有Slash命令及简要说明。
 - /exit：退出程序。
 
 **章节来源**
@@ -282,7 +316,25 @@ AGENT --> TOOLS["工具集合"]
 - 中断后会输出"已停止"，随后可继续输入新消息或执行命令。
 
 **章节来源**
-- [src/agent/ui/Thread.tsx:187-191](file://src/agent/ui/Thread.tsx#L187-L191)
+- [src/agent/ui/Thread.tsx:477-481](file://src/agent/ui/Thread.tsx#L477-L481)
+
+### 键盘导航与Slash命令面板
+- Slash命令面板：输入/触发命令面板，支持Tab补全、上下箭头选择、Enter执行、ESC关闭。
+- 命令建议：根据输入前缀动态显示匹配的Slash命令。
+- 快速访问：使用/help快速查看所有可用命令。
+
+**章节来源**
+- [src/agent/ui/Thread.tsx:308-350](file://src/agent/ui/Thread.tsx#L308-L350)
+- [src/agent/ui/SlashPanel.tsx:15-53](file://src/agent/ui/SlashPanel.tsx#L15-L53)
+
+### 会话管理最佳实践
+- 使用/sessions查看历史会话，必要时用/rewind切换到合适上下文。
+- 新建会话：使用/new创建全新对话，避免历史干扰。
+- 会话恢复：通过thread_id恢复之前的对话内容。
+- 会话查询：定期查看/sessions了解当前对话状态。
+
+**章节来源**
+- [src/agent/sessions.ts:60-172](file://src/agent/sessions.ts#L60-L172)
 
 ### 文本输入与文件操作
 - 文本输入：在交互模式下直接输入消息，支持多行输入。
@@ -308,11 +360,11 @@ AGENT --> TOOLS["工具集合"]
 - 实时进度反馈：工具执行过程中的详细信息会实时显示，提供良好的用户体验。
 
 **章节来源**
-- [src/agent/style.ts:85-137](file://src/agent/style.ts#L85-L137)
+- [src/agent/style.ts:105-127](file://src/agent/style.ts#L105-L127)
 
 ### React Ink界面使用指南
 - **界面布局**：顶部显示品牌标识，中间显示消息列表，底部显示输入框和状态栏。
-- **输入体验**：输入框支持多行输入，斜杠命令面板提供智能建议。
+- **输入体验**：输入框支持多行输入，Slash命令面板提供智能建议。
 - **状态显示**：状态栏实时显示模型名称、消息数量和运行状态。
 - **中断控制**：ESC键可随时中断生成过程。
 - **主题色彩**：统一的色彩方案提供良好的视觉体验。
@@ -323,8 +375,8 @@ AGENT --> TOOLS["工具集合"]
 - 在某些终端中可能需要调整字体设置
 
 **章节来源**
-- [src/agent/ui/Thread.tsx:17-228](file://src/agent/ui/Thread.tsx#L17-L228)
-- [src/agent/ui/App.tsx:15-30](file://src/agent/ui/App.tsx#L15-L30)
+- [src/agent/ui/Thread.tsx:496-517](file://src/agent/ui/Thread.tsx#L496-L517)
+- [src/agent/ui/App.tsx:17-60](file://src/agent/ui/App.tsx#L17-L60)
 
 ### 最佳实践
 - 使用/sessions查看历史会话，必要时用/rewind切换到合适上下文。
@@ -334,5 +386,6 @@ AGENT --> TOOLS["工具集合"]
 - 在React Ink界面中使用ESC中断，提高交互效率。
 - 通过/config调整Python镜像源与自动安装策略，提升开发体验。
 - 利用工具日志功能监控代码执行过程，及时发现问题。
-- 充分利用斜杠命令面板的智能建议功能，提高输入效率。
-- **更新** 享受更快的启动体验：移除splashScreen后，应用启动更迅速，用户可以更快地开始对话。
+- 充分利用Slash命令面板的智能建议功能，提高输入效率。
+- 使用键盘导航（Tab、上下箭头、Enter）提升交互效率。
+- 定期使用/sessions检查会话状态，避免意外的数据丢失。

@@ -1,6 +1,6 @@
 schema_version: 1
 module_path: ""
-title: OnionCode 智能体运行时
+title: 智能体驱动型终端开发环境
 scope:
     - '**'
 source_files:

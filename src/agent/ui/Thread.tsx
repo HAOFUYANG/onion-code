@@ -51,7 +51,7 @@ const MARKDOWN_THEME: "dim" | "bright" =
 
 // ── 色彩系统已迁移至 theme.ts（语义色板 T，dark/light 自适应）──
 
-// ── figlet 大标题（渐变色，跟随主题） ────────────────────────
+// ── figlet 大标题（渐变色，跟随主题，在 HomePage 内懒加载）──
 const _require = createRequire(import.meta.url);
 try {
   const doomFont = _require("figlet/importable-fonts/Doom");
@@ -80,12 +80,6 @@ function gradientText(text: string, c1: string, c2: string): string {
     })
     .join("\n");
 }
-
-const BIG_TITLE = gradientText(
-  figlet.textSync("onionCode", { font: "Doom", horizontalLayout: "fitted" }),
-  T.figletFrom,
-  T.figletTo,
-);
 
 // ── 用户消息 ──────────────────────────────────────────────────
 const UserMessage = () => (
@@ -175,7 +169,19 @@ const SlashPanel = ({
   selectedIndex: number;
 }) => {
   const suggestions = matchSlashCommands(buffer);
-  if (!buffer.startsWith("/") || suggestions.length === 0) return null;
+  if (!buffer.startsWith("/")) return null;
+  if (suggestions.length === 0) {
+    if (buffer.length > 1) {
+      return (
+        <Box flexDirection="column">
+          <Box paddingLeft={2}>
+            <Text dimColor>没有匹配的命令</Text>
+          </Box>
+        </Box>
+      );
+    }
+    return null;
+  }
   return (
     <Box flexDirection="column">
       {suggestions.map((cmd, i) => {
@@ -200,8 +206,12 @@ const SlashPanel = ({
   );
 };
 
-// ── 底部状态行 ────────────────────────────────────────────────
-const ComposerFooter = () => {
+// ── 底部状态行（HomePage / Composer 共用） ──────────────────
+const FooterStatusBar = ({
+  variant,
+}: {
+  variant: "home" | "composer";
+}) => {
   const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
   const modelDisplay = modelName
     .split("-")
@@ -209,18 +219,24 @@ const ComposerFooter = () => {
     .join(" ");
   return (
     <StatusBarPrimitive.Root gap={0} paddingX={2}>
-      <Text color={T.primary} bold>
-        {"■ "}
-      </Text>
-      <Text color={T.primary} bold>
-        {"Build"}
-      </Text>
+      <Text color={T.primary} bold>{"■ "}</Text>
+      <Text color={T.primary} bold>{"Build"}</Text>
       <Text dimColor>{" · "}</Text>
-      <Text bold color={T.textBold}>
-        {modelDisplay}
-      </Text>
-      <Text dimColor>{" · "}</Text>
-      <StatusBarPrimitive.MessageCount dimColor />
+      <Text bold color={T.textBold}>{modelDisplay}</Text>
+      {variant === "composer" ? (
+        <>
+          <Text dimColor>{" · "}</Text>
+          <StatusBarPrimitive.MessageCount dimColor />
+        </>
+      ) : (
+        <>
+          <Box flexGrow={1} />
+          <Text dimColor>{"/"}</Text>
+          <Text dimColor>{" commands  "}</Text>
+          <Text color={T.primary} bold>{"ctrl+c"}</Text>
+          <Text dimColor>{" exit"}</Text>
+        </>
+      )}
     </StatusBarPrimitive.Root>
   );
 };
@@ -358,12 +374,25 @@ interface HomePageProps {
 const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
   const { slashIndex, cmdOutput, composerText, handleSubmit } =
     useSlashCommandHandler({ onNewThread, onRewindThread });
-  const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
+
+  const bigTitle = React.useMemo(
+    () =>
+      gradientText(
+        figlet.textSync("onionCode", {
+          font: "Doom",
+          horizontalLayout: "fitted",
+        }),
+        T.figletFrom,
+        T.figletTo,
+      ),
+    [],
+  );
+
   return (
     <Box flexDirection="column">
       {/* figlet 大标题 */}
       <Box marginBottom={2} marginTop={1}>
-        <Text>{BIG_TITLE}</Text>
+        <Text>{bigTitle}</Text>
       </Box>
 
       {/* 命令输出区 */}
@@ -394,38 +423,16 @@ const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
             <ComposerPrimitive.Input
               submitOnEnter
               onSubmit={handleSubmit}
-              placeholder={
-                "Ask anything... \u201cWhat is the tech stack of this project?\u201d"
-              }
+              placeholder="输入消息，或 / 查看命令..."
               autoFocus
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={T.cancel}>{"  esc"}</Text>
+                <Text color={T.cancel}>{"  esc 中断"}</Text>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
-
-          {/* 状态栏：Build · ModelName · 快捷键提示 */}
-          <StatusBarPrimitive.Root gap={0}>
-            <Text color={T.primary} bold>
-              {"Build"}
-            </Text>
-            <Text dimColor>{"  "}</Text>
-            <Text bold color={T.textBold}>
-              {modelName
-                .split("-")
-                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-                .join(" ")}
-            </Text>
-            <Box flexGrow={1} />
-            <Text dimColor>{"/"}</Text>
-            <Text dimColor>{" commands  "}</Text>
-            <Text color={T.primary} bold>
-              {"ctrl+c"}
-            </Text>
-            <Text dimColor>{" exit"}</Text>
-          </StatusBarPrimitive.Root>
+          <FooterStatusBar variant="home" />
         </Box>
       </Box>
     </Box>
@@ -480,7 +487,7 @@ const Composer = ({ onNewThread, onRewindThread }: ComposerProps) => {
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
-          <ComposerFooter />
+          <FooterStatusBar variant="composer" />
         </Box>
       </Box>
     </Box>
