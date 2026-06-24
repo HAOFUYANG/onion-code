@@ -3,14 +3,21 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-06-23T03:43:46Z"
+exported_at: "2026-06-23T07:58:35Z"
 modules:
     "":
-        dir_name: TARS 风格 CLI AI Agent
-        title: TARS 风格 CLI AI Agent
-        scope: []
-        source_files: []
-        children: []
+        dir_name: OnionCode 智能体运行时
+        title: OnionCode 智能体运行时
+        scope:
+            - '**'
+        source_files:
+            - package.json
+            - pnpm-lock.yaml
+            - skills-lock.json
+            - src/agent/python_env.ts
+        children:
+            - assistant_ui
+            - ui
         depends_on: []
         related_to: []
     assistant_ui:
@@ -21,8 +28,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: ui
+        related_to: []
     build_system:
         dir_name: 构建与发布系统_2
         title: 构建与发布系统
@@ -102,12 +108,11 @@ modules:
         depends_on: []
         related_to: []
     ui:
-        dir_name: 基于 Ink 的终端对话交互界面
-        title: 基于 Ink 的终端对话交互界面
+        dir_name: 终端对话界面与运行时适配
+        title: 终端对话界面与运行时适配
         scope:
             - src/agent/ui/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: assistant_ui
+        related_to: []

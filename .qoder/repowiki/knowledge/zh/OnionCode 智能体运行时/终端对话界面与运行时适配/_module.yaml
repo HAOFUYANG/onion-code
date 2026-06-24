@@ -1,9 +1,8 @@
 schema_version: 1
 module_path: ui
-title: 基于 Ink 的终端对话交互界面
+title: 终端对话界面与运行时适配
 scope:
     - src/agent/ui/
 source_files: []
 depends_on: []
-related_to:
-    - path: assistant_ui
+related_to: []

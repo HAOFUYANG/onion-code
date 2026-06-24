@@ -5,5 +5,4 @@ scope:
     - .agents/skills/assistant-ui/
 source_files: []
 depends_on: []
-related_to:
-    - path: ui
+related_to: []

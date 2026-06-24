@@ -56,8 +56,8 @@ const DARK = {
   textBold: "white", // 白 — 高对比文本（快捷键/模型名）
   textMuted: "#6b7280", // 灰 — 辅助文本（说明/分隔）
   textSubtle: "#4b5563", // 深灰 — 极弱对比（版本号）
-  inputBg: "#272626ff", // 深灰 — 输入区背景
-  homeBg: "#272626ff", // 同上 — 首页输入区背景
+  inputBg: "#272626", // 深灰 — 输入区背景
+  homeBg: "#272626", // 同上 — 首页输入区背景
   border: "#3b3b3b", // 暗灰 — 边框
   slashBg: "#1e3a5f", // 深蓝 — slash 高亮背景
   slashFg: "white", // 白 — slash 高亮前景
@@ -72,8 +72,8 @@ const LIGHT = {
   textBold: "#1f2937", // 近黑 — 高对比文本替代 white
   textMuted: "#78716c", // 暖灰 — 白底上可读的辅助色
   textSubtle: "#9ca3af", // 浅灰 — 白底上的极弱对比
-  inputBg: "#f5f5f5ff", // 浅灰 — 输入区背景
-  homeBg: "#f5f5f5ff", // 同上 — 首页输入区背景
+  inputBg: "#f5f5f5", // 浅灰 — 输入区背景
+  homeBg: "#f5f5f5", // 同上 — 首页输入区背景
   border: "#d4d4d4", // 浅灰 — 边框
   slashBg: "#dbeafe", // 淡蓝 — slash 高亮背景
   slashFg: "#1e40af", // 深蓝 — slash 高亮前景

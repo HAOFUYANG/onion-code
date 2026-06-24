@@ -13,7 +13,13 @@ import {
   useAuiState,
 } from "@assistant-ui/react-ink";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-ink-markdown";
-import { matchSlashCommands, formatSlashCommand } from "../slash_commands.js";
+import {
+  slashCommands,
+  matchSlashCommands,
+  formatSlashCommand,
+  type SlashCommandContext,
+} from "../slash_commands.js";
+import { querySessions, renderSessionsTable } from "../sessions.js";
 import { T, terminalMode } from "./theme.js";
 import { createRequire } from "node:module";
 import figlet from "figlet";
@@ -219,8 +225,139 @@ const ComposerFooter = () => {
   );
 };
 
+// ── Slash 命令处理 Hook（HomePage / Composer 共用） ─────────
+interface UseSlashCommandHandlerOptions {
+  onNewThread: () => void;
+  onRewindThread: (threadId: string) => void;
+}
+
+function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
+  const [slashIndex, setSlashIndex] = React.useState(0);
+  const [cmdOutput, setCmdOutput] = React.useState<string | null>(null);
+  const cmdExecutedRef = React.useRef(false);
+  const aui = useAui();
+  const composerText = useAuiState((s) => s.composer.text);
+  const isSlashMode = composerText.startsWith("/");
+
+  // SlashCommandContext 实现
+  const slashCtxRef = React.useRef<SlashCommandContext>({
+    newThread: () => {
+      options.onNewThread();
+      setCmdOutput(null);
+    },
+    showHelp: () => {
+      const lines = slashCommands.map(
+        (c) =>
+          `  ${chalk.bold.hex(T.primary)("/" + c.name.padEnd(12))} ${chalk.dim(c.description)}`,
+      );
+      setCmdOutput(chalk.bold("\n  可用命令:\n") + lines.join("\n") + "\n");
+    },
+    showSessions: () => {
+      const sessions = querySessions(20);
+      setCmdOutput(renderSessionsTable(sessions));
+    },
+    rewindThread: (threadId: string) => {
+      options.onRewindThread(threadId);
+      setCmdOutput(null);
+    },
+  });
+  // 同步最新回调，避免闭包过时
+  slashCtxRef.current.newThread = () => {
+    options.onNewThread();
+    setCmdOutput(null);
+  };
+  slashCtxRef.current.rewindThread = (threadId: string) => {
+    options.onRewindThread(threadId);
+    setCmdOutput(null);
+  };
+
+  // slash 命令拦截
+  const handleSubmit = React.useCallback(
+    async (text: string) => {
+      // slash 面板回车已直接执行命令，跳过重复处理
+      if (cmdExecutedRef.current) {
+        cmdExecutedRef.current = false;
+        return;
+      }
+      const trimmed = text.trim();
+      if (trimmed.startsWith("/")) {
+        const parts = trimmed.slice(1).split(/\s+/);
+        const name = parts[0].toLowerCase();
+        const args = parts.slice(1).join(" ");
+        const cmd = slashCommands.find(
+          (c) => c.name === name || (c.aliases?.includes(name) ?? false),
+        );
+        if (cmd) {
+          aui.composer().setText("");
+          setCmdOutput(null);
+          const result = await cmd.handler(
+            slashCtxRef.current,
+            args || undefined,
+          );
+          if (result === "exit") process.exit(0);
+          return; // 不发给 AI
+        }
+      }
+      // 普通消息
+      setCmdOutput(null);
+      aui.composer().send();
+    },
+    [aui],
+  );
+
+  // 键盘导航：↑↓ 选择 / Tab 补全 / Enter 执行 / ESC 关闭
+  useInput((_input, key) => {
+    const suggestions = matchSlashCommands(composerText);
+    if (key.upArrow && isSlashMode && suggestions.length > 0) {
+      setSlashIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
+      return;
+    }
+    if (key.downArrow && isSlashMode && suggestions.length > 0) {
+      setSlashIndex((i) => (i + 1) % suggestions.length);
+      return;
+    }
+    if (key.tab && isSlashMode && suggestions.length > 0) {
+      aui.composer().setText(formatSlashCommand(suggestions[slashIndex]));
+      setSlashIndex(0);
+      return;
+    }
+    // Enter：当前文本未精确匹配命令时，自动执行面板选中项
+    if (key.return && isSlashMode && suggestions.length > 0) {
+      const trimmed = composerText.trim();
+      const parts = trimmed.slice(1).split(/\s+/);
+      const name = parts[0].toLowerCase();
+      const exactMatch = slashCommands.find(
+        (c) => c.name === name || (c.aliases?.includes(name) ?? false),
+      );
+      if (!exactMatch) {
+        const selectedCmd = suggestions[slashIndex];
+        cmdExecutedRef.current = true;
+        aui.composer().setText("");
+        setCmdOutput(null);
+        setSlashIndex(0);
+        Promise.resolve(
+          selectedCmd.handler(slashCtxRef.current, undefined),
+        ).then((result: string | void) => {
+          if (result === "exit") process.exit(0);
+        });
+      }
+      return;
+    }
+    if (key.escape && cmdOutput) setCmdOutput(null);
+  });
+
+  return { slashIndex, cmdOutput, composerText, handleSubmit };
+}
+
 // ── OpenCode 风格首页（空状态） ────────────────────────────────
-const HomePage = () => {
+interface HomePageProps {
+  onNewThread: () => void;
+  onRewindThread: (threadId: string) => void;
+}
+
+const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
+  const { slashIndex, cmdOutput, composerText, handleSubmit } =
+    useSlashCommandHandler({ onNewThread, onRewindThread });
   const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
   return (
     <Box flexDirection="column">
@@ -228,6 +365,14 @@ const HomePage = () => {
       <Box marginBottom={2} marginTop={1}>
         <Text>{BIG_TITLE}</Text>
       </Box>
+
+      {/* 命令输出区 */}
+      {cmdOutput && (
+        <Box marginBottom={1}>
+          <Text>{cmdOutput}</Text>
+        </Box>
+      )}
+      <SlashPanel buffer={composerText} selectedIndex={slashIndex} />
 
       {/* 左侧竖线 + 灰色背景输入区域 */}
       <Box flexDirection="row">
@@ -248,6 +393,7 @@ const HomePage = () => {
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
               submitOnEnter
+              onSubmit={handleSubmit}
               placeholder={
                 "Ask anything... \u201cWhat is the tech stack of this project?\u201d"
               }
@@ -287,29 +433,23 @@ const HomePage = () => {
 };
 
 // ── Composer（对话中的输入框，带边框） ────────────────────────
-const Composer = () => {
-  const [slashIndex, setSlashIndex] = React.useState(0);
-  const aui = useAui();
-  const composerText = useAuiState((s) => s.composer.text);
+interface ComposerProps {
+  onNewThread: () => void;
+  onRewindThread: (threadId: string) => void;
+}
 
-  useInput((input, key) => {
-    const suggestions = matchSlashCommands(composerText);
-    if (key.upArrow && suggestions.length > 0) {
-      setSlashIndex((i) => (i - 1 + suggestions.length) % suggestions.length);
-      return;
-    }
-    if (key.downArrow && suggestions.length > 0) {
-      setSlashIndex((i) => (i + 1) % suggestions.length);
-      return;
-    }
-    if (key.tab && suggestions.length > 0) {
-      aui.composer().setText(formatSlashCommand(suggestions[slashIndex]));
-      setSlashIndex(0);
-    }
-  });
+const Composer = ({ onNewThread, onRewindThread }: ComposerProps) => {
+  const { slashIndex, cmdOutput, composerText, handleSubmit } =
+    useSlashCommandHandler({ onNewThread, onRewindThread });
 
   return (
     <Box flexDirection="column" marginTop={2}>
+      {/* 命令输出区（/sessions、/help 等结果） */}
+      {cmdOutput && (
+        <Box marginBottom={1}>
+          <Text>{cmdOutput}</Text>
+        </Box>
+      )}
       <SlashPanel buffer={composerText} selectedIndex={slashIndex} />
       {/* 左侧竖线 + 灰色背景输入区域 */}
       <Box flexDirection="row">
@@ -330,6 +470,7 @@ const Composer = () => {
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
               submitOnEnter
+              onSubmit={handleSubmit}
               placeholder="输入消息，或 / 查看命令..."
               autoFocus
             />
@@ -347,15 +488,19 @@ const Composer = () => {
 };
 
 // ── Thread 主组件 ─────────────────────────────────────────────
-// ── Thread 主组件 ───────────────────────────────────────────────────
-export const Thread = () => (
+interface ThreadProps {
+  onNewThread: () => void;
+  onRewindThread: (threadId: string) => void;
+}
+
+export const Thread = ({ onNewThread, onRewindThread }: ThreadProps) => (
   <ThreadPrimitive.Root flexDirection="column">
     {/* 空状态：OpenCode 风格首页 */}
     <AuiIf condition={(s) => s.thread.isEmpty}>
-      <HomePage />
+      <HomePage onNewThread={onNewThread} onRewindThread={onRewindThread} />
     </AuiIf>
 
-    {/* 消息列表：flexGrow 占满剩余空间，推动输入框至底部 */}
+    {/* 消息列表 */}
     <Box flexGrow={1} flexDirection="column">
       <ThreadPrimitive.Messages
         components={{ UserMessage, AssistantMessage }}
@@ -363,9 +508,9 @@ export const Thread = () => (
       <Loading />
     </Box>
 
-    {/* 输入区域：空状态时由 HomePage 内嵌 ComposerPrimitive.Input，有消息后用 Composer */}
+    {/* 输入区域：空状态由 HomePage 内嵌，有消息后用 Composer */}
     <AuiIf condition={(s) => !s.thread.isEmpty}>
-      <Composer />
+      <Composer onNewThread={onNewThread} onRewindThread={onRewindThread} />
     </AuiIf>
   </ThreadPrimitive.Root>
 );
