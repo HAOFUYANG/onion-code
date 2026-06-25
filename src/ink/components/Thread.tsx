@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import {
   ThreadPrimitive,
   ComposerPrimitive,
@@ -22,8 +22,10 @@ import {
   type SlashCommandContext,
 } from "../../agent/slash_commands.js";
 import { querySessions, renderSessionsTable } from "../../agent/sessions.js";
-import { T, terminalMode } from "../theme/index.js";
+import { T, terminalMode, useInkTheme } from "../theme/index.js";
 import chalk from "chalk";
+import { ThemedText } from "./ThemedText.js";
+import { ThemedBox } from "./ThemedBox.js";
 
 // ── Markdown 流式输出优化 ────────────────────────────────────
 // streaming 过程中 AI 可能输出未闭合的语法残片，预处理将其修复为安全的可渲染形式。
@@ -56,14 +58,14 @@ const MARKDOWN_THEME: "dim" | "bright" =
 // ── 用户消息 ──────────────────────────────────────────────────
 const UserMessage = () => (
   <MessagePrimitive.Root>
-    <Box
+    <ThemedBox
       marginBottom={1}
       flexDirection="column"
       paddingX={2}
       paddingTop={1}
       paddingBottom={1}
       borderStyle="single"
-      borderColor={T.primary}
+      borderVariant="primary"
       borderTop={false}
       borderRight={false}
       borderBottom={false}
@@ -78,7 +80,7 @@ const UserMessage = () => (
           ),
         }}
       />
-    </Box>
+    </ThemedBox>
   </MessagePrimitive.Root>
 );
 
@@ -98,9 +100,9 @@ const AssistantMessage = () => (
           ),
           Reasoning: () => (
             <Box marginBottom={1}>
-              <Text color={T.accent} italic>
+              <ThemedText variant="accent" italic>
                 {"+  Thought: "}
-              </Text>
+              </ThemedText>
               <MarkdownTextPrimitive
                 preprocess={preprocessMarkdownStream}
                 theme={MARKDOWN_THEME}
@@ -162,11 +164,11 @@ const SlashPanel = ({
             ) : (
               <Text dimColor>{` /${cmd.name} `}</Text>
             )}
-            <Text color={T.textMuted}>{`  ${cmd.description}`}</Text>
+            <ThemedText variant="textMuted">{`  ${cmd.description}`}</ThemedText>
           </Box>
         );
       })}
-      <Text color={T.textSubtle}>{"  tab 补全  ↑↓ 选择"}</Text>
+      <ThemedText variant="textSubtle">{"  tab 补全  ↑↓ 选择"}</ThemedText>
     </Box>
   );
 };
@@ -177,6 +179,9 @@ const FooterStatusBar = ({
 }: {
   variant: "home" | "composer";
 }) => {
+  const { stdout } = useStdout();
+  const columns = stdout.columns ?? 80;
+  const mode = process.env.npm_lifecycle_event === "dev" ? "dev" : "build";
   const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
   const modelDisplay = modelName
     .split("-")
@@ -184,24 +189,28 @@ const FooterStatusBar = ({
     .join(" ");
   return (
     <StatusBarPrimitive.Root gap={0} paddingX={2}>
-      <Text color={T.primary}>{"●"}</Text>
-      <Text color={T.textMuted}>{" build"}</Text>
-      <Text color={T.textSubtle}>{" · "}</Text>
-      <Text color={T.textBold}>
+      <ThemedText variant="primary">{"●"}</ThemedText>
+      <ThemedText variant="textMuted">{` ${mode}`}</ThemedText>
+      <ThemedText variant="textSubtle">{" · "}</ThemedText>
+      <ThemedText variant="textBold">
         {modelDisplay}
-      </Text>
+      </ThemedText>
       {variant === "composer" ? (
         <>
-          <Text color={T.textSubtle}>{" · "}</Text>
+          <ThemedText variant="textSubtle">{" · "}</ThemedText>
           <StatusBarPrimitive.MessageCount dimColor />
         </>
       ) : (
         <>
           <Box flexGrow={1} />
-          <Text color={T.textSubtle}>{"/"}</Text>
-          <Text color={T.textSubtle}>{" commands  "}</Text>
-          <Text color={T.textMuted}>{"ctrl+c"}</Text>
-          <Text color={T.textSubtle}>{" exit"}</Text>
+          {columns >= 72 ? (
+            <>
+              <ThemedText variant="textSubtle">{"/"}</ThemedText>
+              <ThemedText variant="textSubtle">{" commands  "}</ThemedText>
+              <ThemedText variant="textMuted">{"ctrl+c"}</ThemedText>
+              <ThemedText variant="textSubtle">{" exit"}</ThemedText>
+            </>
+          ) : null}
         </>
       )}
     </StatusBarPrimitive.Root>
@@ -211,7 +220,7 @@ const FooterStatusBar = ({
 // ── Slash 命令处理 Hook（HomePage / Composer 共用） ─────────
 interface UseSlashCommandHandlerOptions {
   onNewThread: () => void;
-  onRewindThread: (threadId: string) => void;
+  onRewindThread: (threadId: string) => boolean;
   onOpenConfig: () => void;
 }
 
@@ -220,6 +229,9 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
   const [cmdOutput, setCmdOutput] = React.useState<string | null>(null);
   const cmdExecutedRef = React.useRef(false);
   const aui = useAui();
+  const theme = useInkTheme();
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns ?? 80;
   const composerText = useAuiState((s) => s.composer.text);
   const isSlashMode = composerText.startsWith("/");
 
@@ -231,22 +243,34 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
     },
     showHelp: () => {
       const lines = slashCommands.map(
-        (c) =>
-          `  ${chalk.bold.hex(T.primary)("/" + c.name.padEnd(12))} ${chalk.dim(c.description)}`,
+        (c) => {
+          const commandLabel = "/" + c.name.padEnd(12);
+          const styledLabel = theme.getColor("primary")
+            ? chalk.bold.hex(theme.getColor("primary")!)(commandLabel)
+            : chalk.bold(commandLabel);
+          return `  ${styledLabel} ${chalk.dim(c.description)}`;
+        },
       );
       setCmdOutput(chalk.bold("\n  可用命令:\n") + lines.join("\n") + "\n");
     },
     showSessions: () => {
       const sessions = querySessions(20);
-      setCmdOutput(renderSessionsTable(sessions));
+      setCmdOutput(renderSessionsTable(sessions, terminalWidth));
     },
     rewindThread: (threadId: string) => {
-      options.onRewindThread(threadId);
-      setCmdOutput(null);
+      const ok = options.onRewindThread(threadId);
+      setCmdOutput(
+        ok
+          ? `\n  已切换到会话 ${threadId}。上下文会续接，历史消息不会回填到当前界面。\n`
+          : `\n  未找到会话 ${threadId}。先用 /sessions 查看可用 ID。\n`,
+      );
     },
     openConfig: () => {
       options.onOpenConfig();
       setCmdOutput(null);
+    },
+    showNotice: (message: string) => {
+      setCmdOutput(message);
     },
   });
   // 同步最新回调，避免闭包过时
@@ -255,8 +279,19 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
     setCmdOutput(null);
   };
   slashCtxRef.current.rewindThread = (threadId: string) => {
-    options.onRewindThread(threadId);
-    setCmdOutput(null);
+    const ok = options.onRewindThread(threadId);
+    setCmdOutput(
+      ok
+        ? `\n  已切换到会话 ${threadId}。上下文会续接，历史消息不会回填到当前界面。\n`
+        : `\n  未找到会话 ${threadId}。先用 /sessions 查看可用 ID。\n`,
+    );
+  };
+  slashCtxRef.current.showSessions = () => {
+    const sessions = querySessions(20);
+    setCmdOutput(renderSessionsTable(sessions, terminalWidth));
+  };
+  slashCtxRef.current.showNotice = (message: string) => {
+    setCmdOutput(message);
   };
 
   // slash 命令拦截
@@ -340,26 +375,38 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
 // ── OpenCode 风格首页（空状态） ────────────────────────────────
 interface HomePageProps {
   onNewThread: () => void;
-  onRewindThread: (threadId: string) => void;
+  onRewindThread: (threadId: string) => boolean;
   onOpenConfig: () => void;
 }
 
 const HomePage = ({ onNewThread, onRewindThread, onOpenConfig }: HomePageProps) => {
   const { slashIndex, cmdOutput, composerText, handleSubmit } =
     useSlashCommandHandler({ onNewThread, onRewindThread, onOpenConfig });
+  const { stdout } = useStdout();
+  const columns = stdout.columns ?? 80;
+  const showBigTitle = columns >= 72;
 
   return (
     <Box flexDirection="column">
       {/* OpenCode 风格首页大标题 */}
       <Box marginBottom={1} marginTop={1}>
-        <BigText
-          text="onioncode"
-          font="block"
-          colors={T.titleGradient}
-          lineHeight={2}
-          space={true}
-          letterSpacing={0}
-        />
+        {showBigTitle ? (
+          <BigText
+            text="onioncode"
+            font="block"
+            {...(T.titleGradient ? { colors: T.titleGradient } : {})}
+            lineHeight={2}
+            space={true}
+            letterSpacing={0}
+          />
+        ) : (
+          <Box>
+            <ThemedText variant="primary" bold>
+              onionCode
+            </ThemedText>
+            <ThemedText variant="textMuted">{"  CLI AI agent"}</ThemedText>
+          </Box>
+        )}
       </Box>
 
       {/* 命令输出区 */}
@@ -372,19 +419,19 @@ const HomePage = ({ onNewThread, onRewindThread, onOpenConfig }: HomePageProps) 
 
       {/* 左侧竖线 + 灰色背景输入区域 */}
       <Box flexDirection="row">
-        <Box
+        <ThemedBox
           flexDirection="column"
           flexGrow={1}
           paddingX={1}
           paddingTop={0}
           paddingBottom={0}
-          backgroundColor={T.homeBg}
+          backgroundVariant="homeBg"
           borderStyle="bold"
           borderLeft={true}
           borderRight={false}
           borderTop={false}
           borderBottom={false}
-          borderColor={T.primary}
+          borderVariant="primary"
         >
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
@@ -395,12 +442,12 @@ const HomePage = ({ onNewThread, onRewindThread, onOpenConfig }: HomePageProps) 
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={T.textMuted}>{"  esc 中断"}</Text>
+                <ThemedText variant="textMuted">{"  esc 中断"}</ThemedText>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
           <FooterStatusBar variant="home" />
-        </Box>
+        </ThemedBox>
       </Box>
     </Box>
   );
@@ -409,7 +456,7 @@ const HomePage = ({ onNewThread, onRewindThread, onOpenConfig }: HomePageProps) 
 // ── Composer（对话中的输入框，带边框） ────────────────────────
 interface ComposerProps {
   onNewThread: () => void;
-  onRewindThread: (threadId: string) => void;
+  onRewindThread: (threadId: string) => boolean;
   onOpenConfig: () => void;
 }
 
@@ -428,19 +475,19 @@ const Composer = ({ onNewThread, onRewindThread, onOpenConfig }: ComposerProps) 
       <SlashPanel buffer={composerText} selectedIndex={slashIndex} />
       {/* 左侧竖线 + 灰色背景输入区域 */}
       <Box flexDirection="row">
-        <Box
+        <ThemedBox
           flexDirection="column"
           flexGrow={1}
           paddingX={1}
           paddingTop={0}
           paddingBottom={0}
-          backgroundColor={T.inputBg}
+          backgroundVariant="inputBg"
           borderStyle="bold"
           borderLeft={true}
           borderRight={false}
           borderTop={false}
           borderBottom={false}
-          borderColor={T.primary}
+          borderVariant="primary"
         >
           <Box marginBottom={1}>
             <ComposerPrimitive.Input
@@ -451,12 +498,12 @@ const Composer = ({ onNewThread, onRewindThread, onOpenConfig }: ComposerProps) 
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={T.textMuted}>{"  esc 中断"}</Text>
+                <ThemedText variant="textMuted">{"  esc 中断"}</ThemedText>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
           <FooterStatusBar variant="composer" />
-        </Box>
+        </ThemedBox>
       </Box>
     </Box>
   );
@@ -465,7 +512,7 @@ const Composer = ({ onNewThread, onRewindThread, onOpenConfig }: ComposerProps) 
 // ── Thread 主组件 ─────────────────────────────────────────────
 interface ThreadProps {
   onNewThread: () => void;
-  onRewindThread: (threadId: string) => void;
+  onRewindThread: (threadId: string) => boolean;
   onOpenConfig: () => void;
 }
 

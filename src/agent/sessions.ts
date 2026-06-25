@@ -135,14 +135,23 @@ export function querySessions(limit = 20): SessionRow[] {
 }
 
 // ── 渲染会话列表表格 ─────────────────────────────────────────
-export function renderSessionsTable(sessions: SessionRow[]): string {
+export function renderSessionsTable(
+  sessions: SessionRow[],
+  terminalWidth = process.stdout.columns ?? 96,
+): string {
   if (sessions.length === 0) {
     return chalk.yellow("\n  暂无历史会话记录。\n");
   }
 
+  const availableWidth = Math.max(56, Math.min(96, terminalWidth - 4));
+  const compact = availableWidth < 84;
+  const idWidth = compact ? 24 : 38;
+  const timeWidth = 10;
+  const questionWidth = Math.max(18, availableWidth - idWidth - timeWidth - 8);
+
   const table = new Table({
     head: ["thread_id", "最后用户输入", "时间"],
-    colWidths: [38, 46, 10],
+    colWidths: [idWidth, questionWidth, timeWidth],
     wordWrap: true,
     chars: {
       top: "─",

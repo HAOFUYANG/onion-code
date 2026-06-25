@@ -3,20 +3,23 @@
 <cite>
 **本文档引用的文件**
 - [package.json](file://package.json)
-- [src/agent/ui/App.tsx](file://src/agent/ui/App.tsx)
-- [src/agent/ui/Thread.tsx](file://src/agent/ui/Thread.tsx)
-- [src/agent/ui/adapter.ts](file://src/agent/ui/adapter.ts)
-- [src/agent/ui/ConfigPanel.tsx](file://src/agent/ui/ConfigPanel.tsx)
+- [src/ink/App.tsx](file://src/ink/App.tsx)
+- [src/ink/components/Thread.tsx](file://src/ink/components/Thread.tsx)
+- [src/ink/runtime/adapter.ts](file://src/ink/runtime/adapter.ts)
+- [src/ink/screens/ConfigPanel.tsx](file://src/ink/screens/ConfigPanel.tsx)
+- [src/ink/theme/index.ts](file://src/ink/theme/index.ts)
 - [src/agent/slash_commands.ts](file://src/agent/slash_commands.ts)
 - [src/agent/agent.ts](file://src/agent/agent.ts)
-- [src/agent/style.ts](file://src/agent/style.ts)
-- [src/agent/ui/theme.ts](file://src/agent/ui/theme.ts)
 - [src/agent/sessions.ts](file://src/agent/sessions.ts)
 - [src/agent/config.ts](file://src/agent/config.ts)
+- [src/agent/python_env.ts](file://src/agent/python_env.ts)
+- [src/agent/cli.ts](file://src/agent/cli.ts)
 </cite>
 
 ## 更新摘要
 **变更内容**
+- 应用架构完全重构：从 Web React 应用转换为 Ink 终端应用
+- 新增完整的 src/ink/ 目录结构，包含应用框架、组件、运行时和主题系统
 - SlashPanel 组件仍存在并被集成到 Thread 组件中
 - Thread 组件进行了重大重构，包括底部状态栏的重新设计和 slash 命令处理逻辑的改进
 - 新Slash命令系统：重构 Slash 命令处理逻辑，支持上下文绑定和命令执行
@@ -24,6 +27,7 @@
 - 动态线程ID管理：实现基于 Ref 的动态线程ID获取机制，支持会话切换和重放
 - 会话管理增强：完善会话查询、重放和验证功能
 - 配置中心集成：新增配置对话框和 Python 环境管理
+- 主题系统重构：全新的语义化主题系统，支持自动主题适配
 
 ## 目录
 1. [简介](#简介)
@@ -41,7 +45,7 @@
 
 onionCode 是一个基于 React 和 Ink 的 CLI AI 助手终端 UI 组件。该项目提供了一个现代化的终端界面，支持流式响应、Slash 命令面板、主题化显示等功能。系统集成了 LangChain 和 OpenAI 模型，提供了完整的 AI 助手功能。
 
-**更新** 项目已从简单的文本界面升级为复杂的图形界面，包含 figlet 标题、渐变色彩系统和新的状态栏设计等重大视觉重构。**新增** 基于工厂函数的适配器架构、动态线程ID管理和增强的 Slash 命令系统。
+**更新** 项目已从 Web React 应用完全重构为 Ink 终端应用，采用全新的架构设计。应用现在位于 src/ink/ 目录下，包含完整的组件体系、运行时适配器和主题系统。系统支持 OpenCode 风格的图形界面、智能主题适配和增强的 Slash 命令系统。
 
 该组件的核心特点包括：
 - 基于 React Ink 的终端 UI 渲染
@@ -54,9 +58,6 @@ onionCode 是一个基于 React 和 Ink 的 CLI AI 助手终端 UI 组件。该�
 - **会话查询和重放**
 - **配置中心集成**
 - **全新的图形界面设计**
-- **渐变色彩系统**
-- **figlet 字体支持**
-- **OpenCode 风格视觉设计**
 - **语义化主题系统**
 - **自动主题适配**
 - **Markdown 流式输出优化**
@@ -67,7 +68,7 @@ onionCode 是一个基于 React 和 Ink 的 CLI AI 助手终端 UI 组件。该�
 
 ```mermaid
 graph TB
-subgraph "应用层"
+subgraph "Ink 应用层"
 CLI[CLI 入口]
 App[App 根组件]
 Thread[Thread 主组件]
@@ -81,8 +82,9 @@ Composer[输入组件]
 SlashPanel[Slash 命令面板]
 HomePage[OpenCode 风格首页]
 StatusBar[状态栏组件]
+Dialog[对话框组件]
 end
-subgraph "适配器层"
+subgraph "运行时层"
 AdapterFactory[适配器工厂函数]
 Adapter[LangChain 适配器]
 DynamicAdapter[动态适配器]
@@ -92,14 +94,14 @@ Agent[AI Agent 核心]
 Tools[工具集合]
 Config[配置管理]
 Sessions[会话管理]
+PythonEnv[Python 环境管理]
 end
-subgraph "样式层"
-Style[样式系统]
-Theme[主题配置]
-Gradient[渐变系统]
-Figlet[字体系统]
-T[T 语义色板]
+subgraph "主题层"
+Theme[主题系统]
 TerminalMode[终端模式检测]
+T[语义色板]
+Gradient[渐变系统]
+BigText[大字体系统]
 end
 CLI --> App
 App --> Thread
@@ -111,29 +113,31 @@ Thread --> Loading
 Thread --> Composer
 Composer --> SlashPanel
 Composer --> StatusBar
+Thread --> Dialog
 Thread --> AdapterFactory
 AdapterFactory --> DynamicAdapter
 DynamicAdapter --> Adapter
 Adapter --> Agent
 Agent --> Tools
 Agent --> Sessions
-App --> Style
+Agent --> PythonEnv
+App --> Theme
 Thread --> Theme
-Theme --> Gradient
-Theme --> Figlet
-Theme --> T
 Theme --> TerminalMode
+Theme --> T
+Theme --> Gradient
+Theme --> BigText
 ```
 
 **图表来源**
-- [src/agent/ui/App.tsx:1-75](file://src/agent/ui/App.tsx#L1-L75)
-- [src/agent/ui/Thread.tsx:1-532](file://src/agent/ui/Thread.tsx#L1-L532)
-- [src/agent/ui/adapter.ts:1-84](file://src/agent/ui/adapter.ts#L1-L84)
-- [src/agent/ui/theme.ts:1-85](file://src/agent/ui/theme.ts#L1-L85)
+- [src/ink/App.tsx:1-100](file://src/ink/App.tsx#L1-L100)
+- [src/ink/components/Thread.tsx:1-493](file://src/ink/components/Thread.tsx#L1-L493)
+- [src/ink/runtime/adapter.ts:1-84](file://src/ink/runtime/adapter.ts#L1-L84)
+- [src/ink/theme/index.ts:1-83](file://src/ink/theme/index.ts#L1-L83)
 
 **章节来源**
-- [package.json:1-61](file://package.json#L1-L61)
-- [src/agent/ui/App.tsx:1-75](file://src/agent/ui/App.tsx#L1-L75)
+- [package.json:1-62](file://package.json#L1-L62)
+- [src/ink/App.tsx:1-100](file://src/ink/App.tsx#L1-L100)
 
 ## 核心组件
 
@@ -174,7 +178,7 @@ App --> Box : "使用"
 ```
 
 **图表来源**
-- [src/agent/ui/App.tsx:18-75](file://src/agent/ui/App.tsx#L18-L75)
+- [src/ink/App.tsx:37-100](file://src/ink/App.tsx#L37-L100)
 
 ### 线程管理组件
 
@@ -188,7 +192,7 @@ class Thread {
 +render() JSX.Element
 }
 class HomePage {
-+figletTitle : string
++bigText : BigText
 +composer : Composer
 +statusBar : StatusBar
 +render() JSX.Element
@@ -206,7 +210,7 @@ class AssistantMessage {
 +render() JSX.Element
 }
 class Loading {
-+spinner : DotsSpinner
++spinner : Spinner
 +elapsedTime : ElapsedTime
 +render() JSX.Element
 }
@@ -231,6 +235,13 @@ class FooterStatusBar {
 +variant : "home" | "composer"
 +render() JSX.Element
 }
+class Dialog {
++title : string
++subtitle : string
++tone : string
++actions : string
++render() JSX.Element
+}
 Thread --> HomePage : "空状态"
 Thread --> UserMessage : "展示"
 Thread --> AssistantMessage : "展示"
@@ -241,18 +252,19 @@ Composer --> FooterStatusBar : "底部状态栏"
 Thread --> FooterStatusBar : "状态栏"
 HomePage --> SlashPanel : "命令面板"
 HomePage --> FooterStatusBar : "状态栏"
+Thread --> Dialog : "对话框"
 ```
 
 **图表来源**
-- [src/agent/ui/Thread.tsx:163-207](file://src/agent/ui/Thread.tsx#L163-L207)
-- [src/agent/ui/Thread.tsx:209-242](file://src/agent/ui/Thread.tsx#L209-L242)
-- [src/agent/ui/Thread.tsx:504-532](file://src/agent/ui/Thread.tsx#L504-L532)
+- [src/ink/components/Thread.tsx:340-493](file://src/ink/components/Thread.tsx#L340-L493)
+- [src/ink/components/Thread.tsx:129-172](file://src/ink/components/Thread.tsx#L129-L172)
+- [src/ink/components/Thread.tsx:174-209](file://src/ink/components/Thread.tsx#L174-L209)
 
 **章节来源**
-- [src/agent/ui/App.tsx:18-75](file://src/agent/ui/App.tsx#L18-L75)
-- [src/agent/ui/Thread.tsx:163-207](file://src/agent/ui/Thread.tsx#L163-L207)
-- [src/agent/ui/Thread.tsx:209-242](file://src/agent/ui/Thread.tsx#L209-L242)
-- [src/agent/ui/Thread.tsx:504-532](file://src/agent/ui/Thread.tsx#L504-L532)
+- [src/ink/App.tsx:37-100](file://src/ink/App.tsx#L37-L100)
+- [src/ink/components/Thread.tsx:340-493](file://src/ink/components/Thread.tsx#L340-L493)
+- [src/ink/components/Thread.tsx:129-172](file://src/ink/components/Thread.tsx#L129-L172)
+- [src/ink/components/Thread.tsx:174-209](file://src/ink/components/Thread.tsx#L174-L209)
 
 ## 架构概览
 
@@ -264,14 +276,13 @@ subgraph "表现层 (Presentation Layer)"
 UI[React Ink 组件]
 Styles[样式系统]
 Themes[主题配置]
-Gradient[渐变系统]
-Figlet[字体系统]
-T[T 语义色板]
 TerminalMode[终端模式检测]
 Markdown[Markdown 流式渲染]
 SlashPanel[Slash 命令面板]
 FooterStatusBar[底部状态栏]
 ConfigPanel[配置面板]
+Dialog[对话框组件]
+BigText[大字体组件]
 end
 subgraph "业务逻辑层 (Business Logic Layer)"
 Thread[Thread 管理]
@@ -282,8 +293,9 @@ StatusBar[状态栏组件]
 Sessions[会话管理]
 Config[配置管理]
 useSlashCommandHandler[Slash 命令处理 Hook]
+PythonEnv[Python 环境管理]
 end
-subgraph "适配器层 (Adapter Layer)"
+subgraph "运行时层 (Runtime Layer)"
 AdapterFactory[适配器工厂函数]
 DynamicAdapter[动态适配器]
 StaticAdapter[静态适配器]
@@ -308,6 +320,7 @@ Thread --> FooterStatusBar
 Thread --> useSlashCommandHandler
 Thread --> Sessions
 Thread --> Config
+Thread --> PythonEnv
 Thread --> AdapterFactory
 AdapterFactory --> DynamicAdapter
 AdapterFactory --> StaticAdapter
@@ -319,22 +332,20 @@ Agent --> Memory
 Memory --> SQLite
 Memory --> Checkpoints
 Config --> ConfigDB
-Styles --> UI
 Themes --> UI
-Gradient --> UI
-Figlet --> UI
-T --> UI
-TerminalMode --> T
+TerminalMode --> Themes
 Markdown --> UI
 SlashPanel --> UI
 ConfigPanel --> UI
+Dialog --> UI
+BigText --> UI
 ```
 
 **图表来源**
-- [src/agent/ui/adapter.ts:13-84](file://src/agent/ui/adapter.ts#L13-L84)
+- [src/ink/runtime/adapter.ts:13-84](file://src/ink/runtime/adapter.ts#L13-L84)
 - [src/agent/agent.ts:80-181](file://src/agent/agent.ts#L80-L181)
-- [src/agent/ui/theme.ts:14-85](file://src/agent/ui/theme.ts#L14-L85)
-- [src/agent/ui/Thread.tsx:244-371](file://src/agent/ui/Thread.tsx#L244-L371)
+- [src/ink/theme/index.ts:14-83](file://src/ink/theme/index.ts#L14-L83)
+- [src/ink/components/Thread.tsx:211-338](file://src/ink/components/Thread.tsx#L211-L338)
 
 ## 详细组件分析
 
@@ -365,7 +376,7 @@ Note over Adapter,UI : 动态线程ID管理
 ```
 
 **图表来源**
-- [src/agent/ui/adapter.ts:13-84](file://src/agent/ui/adapter.ts#L13-L84)
+- [src/ink/runtime/adapter.ts:13-84](file://src/ink/runtime/adapter.ts#L13-L84)
 - [src/agent/agent.ts:106-181](file://src/agent/agent.ts#L106-L181)
 
 ### 动态线程ID管理
@@ -389,8 +400,8 @@ ResetRuntime --> CreateRef
 ```
 
 **图表来源**
-- [src/agent/ui/App.tsx:18-49](file://src/agent/ui/App.tsx#L18-L49)
-- [src/agent/ui/adapter.ts:17-18](file://src/agent/ui/adapter.ts#L17-L18)
+- [src/ink/App.tsx:42-72](file://src/ink/App.tsx#L42-L72)
+- [src/ink/runtime/adapter.ts:17-18](file://src/ink/runtime/adapter.ts#L17-L18)
 
 ### Slash 命令系统
 
@@ -421,8 +432,8 @@ Clear --> Wait[等待新输入]
 
 **图表来源**
 - [src/agent/slash_commands.ts:79-92](file://src/agent/slash_commands.ts#L79-L92)
-- [src/agent/ui/Thread.tsx:163-207](file://src/agent/ui/Thread.tsx#L163-L207)
-- [src/agent/ui/Thread.tsx:244-371](file://src/agent/ui/Thread.tsx#L244-L371)
+- [src/ink/components/Thread.tsx:129-172](file://src/ink/components/Thread.tsx#L129-L172)
+- [src/ink/components/Thread.tsx:211-338](file://src/ink/components/Thread.tsx#L211-L338)
 
 ### 底部状态栏设计
 
@@ -452,7 +463,7 @@ ExitInfo2 --> Render
 ```
 
 **图表来源**
-- [src/agent/ui/Thread.tsx:209-242](file://src/agent/ui/Thread.tsx#L209-L242)
+- [src/ink/components/Thread.tsx:174-209](file://src/ink/components/Thread.tsx#L174-L209)
 
 ### 会话管理增强
 
@@ -479,7 +490,7 @@ Success --> End
 
 **图表来源**
 - [src/agent/sessions.ts:60-135](file://src/agent/sessions.ts#L60-L135)
-- [src/agent/ui/Thread.tsx:259-262](file://src/agent/ui/Thread.tsx#L259-L262)
+- [src/ink/components/Thread.tsx:243-246](file://src/ink/components/Thread.tsx#L243-L246)
 
 ### 配置中心集成
 
@@ -501,16 +512,38 @@ Ready --> End[结束]
 **图表来源**
 - [src/agent/config.ts:71-146](file://src/agent/config.ts#L71-L146)
 
+### Python 环境管理
+
+**新增** 系统集成了完整的 Python 环境管理功能，支持虚拟环境创建和依赖安装。
+
+```mermaid
+flowchart TD
+Start[开始 Python 环境管理] --> CheckVenv[检查虚拟环境]
+CheckVenv --> VenvExists{虚拟环境存在?}
+VenvExists --> |是| CheckPackages[检查缺失包]
+VenvExists --> |否| CreateVenv[创建虚拟环境]
+CreateVenv --> CheckPackages
+CheckPackages --> MissingPackages{有缺失包?}
+MissingPackages --> |是| InstallPackages[安装缺失包]
+MissingPackages --> |否| Ready[环境就绪]
+InstallPackages --> Ready
+Ready --> End[结束]
+```
+
+**图表来源**
+- [src/agent/python_env.ts:161-170](file://src/agent/python_env.ts#L161-L170)
+
 **章节来源**
-- [src/agent/ui/adapter.ts:13-84](file://src/agent/ui/adapter.ts#L13-L84)
+- [src/ink/runtime/adapter.ts:13-84](file://src/ink/runtime/adapter.ts#L13-L84)
 - [src/agent/slash_commands.ts:21-77](file://src/agent/slash_commands.ts#L21-L77)
-- [src/agent/ui/Thread.tsx:163-207](file://src/agent/ui/Thread.tsx#L163-L207)
-- [src/agent/ui/Thread.tsx:209-242](file://src/agent/ui/Thread.tsx#L209-L242)
-- [src/agent/ui/Thread.tsx:244-371](file://src/agent/ui/Thread.tsx#L244-L371)
+- [src/ink/components/Thread.tsx:129-172](file://src/ink/components/Thread.tsx#L129-L172)
+- [src/ink/components/Thread.tsx:174-209](file://src/ink/components/Thread.tsx#L174-L209)
+- [src/ink/components/Thread.tsx:211-338](file://src/ink/components/Thread.tsx#L211-L338)
 - [src/agent/sessions.ts:44-57](file://src/agent/sessions.ts#L44-L57)
 - [src/agent/config.ts:71-146](file://src/agent/config.ts#L71-L146)
+- [src/agent/python_env.ts:161-170](file://src/agent/python_env.ts#L161-L170)
 
-## 视ual Design System
+## 视觉设计系统
 
 **新增** 系统引入了完整的视觉设计系统，包含图形界面、渐变色彩和字体支持。
 
@@ -536,7 +569,7 @@ IsApple --> |否| DefaultDark[默认 dark]
 ```
 
 **图表来源**
-- [src/agent/ui/theme.ts:14-46](file://src/agent/ui/theme.ts#L14-L46)
+- [src/ink/theme/index.ts:14-46](file://src/ink/theme/index.ts#L14-L46)
 
 ### 语义化主题系统
 
@@ -556,36 +589,33 @@ HomeBg[homeBg - 首页输入区背景]
 Border[border - 边框]
 SlashBg[slashBg - slash 高亮背景]
 SlashFg[slashFg - slash 高亮前景]
-FigletFrom[figletFrom - figlet 渐变起点]
-FigletTo[figletTo - figlet 渐变终点]
+TitleGradient[titleGradient - 标题渐变]
 end
 subgraph "深色主题 DARK"
 DarkPrimary[深蓝 #3b82f6]
 DarkAccent[深橙 #f59e0b]
 DarkCancel[深红 #f87171]
-DarkTextBold[白色]
-DarkTextMuted[灰色 #6b7280]
-DarkTextSubtle[深灰 #4b5563]
-DarkInputBg[深灰 #272626]
+DarkTextBold[亮灰白 #e4e4e7]
+DarkTextMuted[中灰 #9a9aa2]
+DarkTextSubtle[深灰 #666670]
+DarkInputBg[深灰黑 #222225]
 DarkBorder[暗灰 #3b3b3b]
 DarkSlashBg[深蓝 #1e3a5f]
 DarkSlashFg[白色]
-DarkFigletFrom[浅蓝 #60a5fa]
-DarkFigletTo[橙 #f59e0b]
+DarkTitleGradient[紫色渐变]
 end
 subgraph "浅色主题 LIGHT"
 LightPrimary[深蓝 #2563eb]
 LightAccent[深橙 #d97706]
 LightCancel[深红 #dc2626]
-LightTextBold[近黑 #1f2937]
-LightTextMuted[暖灰 #78716c]
+LightTextBold[近黑灰 #2b313a]
+LightTextMuted[中灰 #6b7280]
 LightTextSubtle[浅灰 #9ca3af]
 LightInputBg[浅灰 #f5f5f5]
 LightBorder[浅灰 #d4d4d4]
 LightSlashBg[淡蓝 #dbeafe]
 LightSlashFg[深蓝 #1e40af]
-LightFigletFrom[深蓝 #1d4ed8]
-LightFigletTo[深褐橙 #92400e]
+LightTitleGradient[蓝色渐变]
 end
 T --> Primary
 T --> Accent
@@ -598,8 +628,7 @@ T --> HomeBg
 T --> Border
 T --> SlashBg
 T --> SlashFg
-T --> FigletFrom
-T --> FigletTo
+T --> TitleGradient
 DARK --> DarkPrimary
 DARK --> DarkAccent
 DARK --> DarkCancel
@@ -610,8 +639,7 @@ DARK --> DarkInputBg
 DARK --> DarkBorder
 DARK --> DarkSlashBg
 DARK --> DarkSlashFg
-DARK --> DarkFigletFrom
-DARK --> DarkFigletTo
+DARK --> DarkTitleGradient
 LIGHT --> LightPrimary
 LIGHT --> LightAccent
 LIGHT --> LightCancel
@@ -622,12 +650,11 @@ LIGHT --> LightInputBg
 LIGHT --> LightBorder
 LIGHT --> LightSlashBg
 LIGHT --> LightSlashFg
-LIGHT --> LightFigletFrom
-LIGHT --> LightFigletTo
+LIGHT --> LightTitleGradient
 ```
 
 **图表来源**
-- [src/agent/ui/theme.ts:52-85](file://src/agent/ui/theme.ts#L52-L85)
+- [src/ink/theme/index.ts:52-83](file://src/ink/theme/index.ts#L52-L83)
 
 ### Markdown 流式输出优化
 
@@ -636,10 +663,10 @@ LIGHT --> LightFigletTo
 ```mermaid
 flowchart TD
 Start[开始流式处理] --> Preprocess[预处理 Markdown]
-Preprocess --> FenceCheck[检查代码块
-``` 数量]
+Preprocess --> FenceCheck[检查代码块数量]
 FenceCheck --> OddFence{数量为奇数?}
-OddFence --> |是| AddFence[添加闭合 ```]
+OddFence --> |是| AddFence[添加闭合
+```]
 OddFence --> |否| BoldCheck[检查粗体 ** 数量]
 AddFence --> BoldCheck
 BoldCheck --> OddBold{数量为奇数?}
@@ -660,8 +687,8 @@ BrightTheme --> End
 ```
 
 **图表来源**
-- [src/agent/ui/Thread.tsx:29-44](file://src/agent/ui/Thread.tsx#L29-L44)
-- [src/agent/ui/Thread.tsx:46-50](file://src/agent/ui/Thread.tsx#L46-L50)
+- [src/ink/components/Thread.tsx:28-44](file://src/ink/components/Thread.tsx#L28-L44)
+- [src/ink/components/Thread.tsx:46-50](file://src/ink/components/Thread.tsx#L46-L50)
 
 ### 色彩令牌系统
 
@@ -672,16 +699,15 @@ BrightTheme --> End
 | primary | #3b82f6 | #2563eb | 主强调色（竖线/标签/图标） | `用户标签` |
 | accent | #f59e0b | #d97706 | 次强调色（Tip/high/spinner） | `推理内容` |
 | cancel | #f87171 | #dc2626 | 中断/错误 | `ESC 中断` |
-| textBold | white | #1f2937 | 高对比文本（快捷键/模型名） | `模型状态` |
-| textMuted | #6b7280 | #78716c | 辅助文本（说明/分隔） | `说明文字` |
-| textSubtle | #4b5563 | #9ca3af | 极弱对比（版本号） | `版本号` |
-| inputBg | #272626 | #f5f5f5 | 输入区背景 | `输入框背景` |
-| homeBg | #272626 | #f5f5f5 | 首页输入区背景 | `首页输入区` |
+| textBold | #e4e4e7 | #2b313a | 高对比文本（快捷键/模型名） | `模型状态` |
+| textMuted | #9a9aa2 | #6b7280 | 辅助文本（说明/分隔） | `说明文字` |
+| textSubtle | #666670 | #9ca3af | 极弱对比（版本号） | `版本号` |
+| inputBg | #222225 | #f5f5f5 | 输入区背景 | `输入框背景` |
+| homeBg | #222225 | #f5f5f5 | 首页输入区背景 | `首页输入区` |
 | border | #3b3b3b | #d4d4d4 | 边框 | `边框颜色` |
 | slashBg | #1e3a5f | #dbeafe | slash 高亮背景 | `命令面板` |
 | slashFg | white | #1e40af | slash 高亮文字 | `命令名称` |
-| figletFrom | #60a5fa | #1d4ed8 | figlet 渐变起点 | `大标题渐变` |
-| figletTo | #f59e0b | #92400e | figlet 渐变终点 | `大标题渐变` |
+| titleGradient | ["#a855f7","#8b5cf6","#6366f1","#3b82f6"] | ["#7c3aed","#6d28d9","#4f46e5","#2563eb"] | 标题渐变 | `onioncode 标题` |
 
 ### 配置面板设计
 
@@ -701,13 +727,31 @@ Done --> End[结束]
 ```
 
 **图表来源**
-- [src/agent/ui/ConfigPanel.tsx:33-203](file://src/agent/ui/ConfigPanel.tsx#L33-L203)
+- [src/ink/screens/ConfigPanel.tsx:37-208](file://src/ink/screens/ConfigPanel.tsx#L37-L208)
+
+### OpenCode 风格首页
+
+**新增** 系统采用了 OpenCode 风格的图形界面设计，使用 ink-big-text 组件创建大标题效果：
+
+```mermaid
+flowchart TD
+Start[开始首页渲染] --> BigText[渲染 onioncode 大标题]
+BigText --> Gradient[应用渐变色彩]
+Gradient --> InputArea[渲染输入区域]
+InputArea --> Placeholder[显示占位符文本]
+Placeholder --> CommandsHelp[显示 / 命令帮助]
+CommandsHelp --> StatusBar[渲染底部状态栏]
+StatusBar --> RenderComplete[渲染完成]
+```
+
+**图表来源**
+- [src/ink/components/Thread.tsx:347-407](file://src/ink/components/Thread.tsx#L347-L407)
 
 **章节来源**
-- [src/agent/ui/theme.ts:52-85](file://src/agent/ui/theme.ts#L52-L85)
-- [src/agent/ui/Thread.tsx:84-88](file://src/agent/ui/Thread.tsx#L84-L88)
-- [src/agent/ui/Thread.tsx:204-226](file://src/agent/ui/Thread.tsx#L204-L226)
-- [src/agent/ui/ConfigPanel.tsx:33-203](file://src/agent/ui/ConfigPanel.tsx#L33-L203)
+- [src/ink/theme/index.ts:52-83](file://src/ink/theme/index.ts#L52-L83)
+- [src/ink/components/Thread.tsx:84-88](file://src/ink/components/Thread.tsx#L84-L88)
+- [src/ink/components/Thread.tsx:204-226](file://src/ink/components/Thread.tsx#L204-L226)
+- [src/ink/screens/ConfigPanel.tsx:37-208](file://src/ink/screens/ConfigPanel.tsx#L37-L208)
 
 ## 依赖关系分析
 
@@ -721,6 +765,7 @@ Ink[Ink ^7.1.0]
 AssistantUI[@assistant-ui/react-ink ^0.0.29]
 Markdown[@assistant-ui/react-ink-markdown ^0.0.28]
 ConfigPanel[@inkjs/ui ^2.0.0]
+BigText[ink-big-text ^2.0.0]
 end
 subgraph "AI/LLM 依赖"
 LangChain[LangChain ^1.4.4]
@@ -748,6 +793,7 @@ App --> Ink
 App --> AssistantUI
 App --> Markdown
 App --> ConfigPanel
+App --> BigText
 App --> LangChain
 App --> OpenAI
 App --> LangGraph
@@ -761,7 +807,7 @@ App --> Inquirer
 ```
 
 **图表来源**
-- [package.json:21-42](file://package.json#L21-L42)
+- [package.json:21-44](file://package.json#L21-L44)
 
 **章节来源**
 - [package.json:21-54](file://package.json#L21-L54)
@@ -782,6 +828,8 @@ App --> Inquirer
 8. **Slash 命令缓存**：命令匹配结果的缓存机制
 9. **状态栏优化**：底部状态栏的高效渲染
 10. **配置面板异步处理**：Python 环境初始化的异步处理
+11. **主题系统缓存**：终端模式检测结果的缓存
+12. **大字体预加载**：ink-big-text 组件的优化加载
 
 ### 内存管理
 
@@ -805,7 +853,7 @@ Cleanup --> End[结束]
 ```
 
 **图表来源**
-- [src/agent/ui/adapter.ts:35-78](file://src/agent/ui/adapter.ts#L35-L78)
+- [src/ink/runtime/adapter.ts:35-78](file://src/ink/runtime/adapter.ts#L35-L78)
 
 ### 缓存策略
 
@@ -818,6 +866,8 @@ Cleanup --> End[结束]
 - **命令缓存**：Slash 命令匹配结果的缓存
 - **配置缓存**：用户配置的内存缓存
 - **状态栏缓存**：底部状态栏的渲染缓存
+- **Python 环境缓存**：虚拟环境路径的缓存
+- **大字体缓存**：ink-big-text 组件的优化缓存
 
 ## 故障排除指南
 
@@ -830,16 +880,15 @@ Cleanup --> End[结束]
 | 配额错误 | insufficient_quota 429 | API 额度不足 | 检查账户余额和使用情况 |
 | 超时错误 | ETIMEDOUT timeout | 网络连接问题 | 检查网络连接后重试 |
 | 递归限制 | Recursion limit | Agent 执行步数超限 | 将复杂任务分解为多个小步骤 |
-| 字体加载失败 | figlet font error | Doom 字体不可用 | 系统自动回退到 Standard 字体 |
-| 渐变渲染异常 | color interpolation error | 颜色值格式错误 | 检查色彩令牌配置 |
-| 主题适配错误 | terminal mode detection | 环境变量解析失败 | 检查 COLORFGBG 和 NO_COLOR 设置 |
+| 终端主题错误 | terminal mode detection | 环境变量解析失败 | 检查 COLORFGBG 和 NO_COLOR 设置 |
 | Markdown 渲染异常 | markdown parsing error | 未闭合语法导致 | 使用预处理函数修复 |
 | 适配器错误 | adapter creation failed | 工厂函数参数错误 | 检查 getThreadId 函数实现 |
 | 线程ID错误 | threadId invalid | threadId 格式不正确 | 确保 threadId 符合 UUID 格式 |
 | 会话查询失败 | database connection error | SQLite 连接问题 | 检查 .data/checkpointer.db 文件权限 |
 | Slash 命令执行失败 | command execution error | 命令上下文错误 | 检查 Slash 命令处理器实现 |
 | 配置面板错误 | config panel error | 配置文件损坏 | 检查配置文件格式和权限 |
-| 状态栏渲染异常 | status bar rendering | 终端宽度检测失败 | 检查终端环境变量设置 |
+| Python 环境错误 | python environment error | 虚拟环境创建失败 | 检查 Python 安装和权限设置 |
+| 大字体渲染异常 | big text rendering | ink-big-text 组件问题 | 检查终端字体支持 |
 
 ### 调试技巧
 
@@ -856,26 +905,28 @@ Cleanup --> End[结束]
 11. **调试配置面板**：验证配置文件的读写操作
 12. **检查状态栏**：验证底部状态栏的渲染和布局
 13. **测试动态线程ID**：验证 Ref 缓存和线程切换功能
+14. **调试 Python 环境**：验证虚拟环境创建和依赖安装
+15. **检查大字体渲染**：验证 ink-big-text 组件的渲染效果
 
 **章节来源**
-- [src/agent/ui/Thread.tsx:244-371](file://src/agent/ui/Thread.tsx#L244-L371)
-- [src/agent/ui/ConfigPanel.tsx:33-203](file://src/agent/ui/ConfigPanel.tsx#L33-L203)
+- [src/ink/components/Thread.tsx:211-338](file://src/ink/components/Thread.tsx#L211-L338)
+- [src/ink/screens/ConfigPanel.tsx:37-208](file://src/ink/screens/ConfigPanel.tsx#L37-L208)
 
 ## 结论
 
 onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。通过精心设计的架构和丰富的功能特性，该组件为用户提供了流畅的 AI 助手体验。
 
-**更新** 经过重大视觉重构和主题系统升级，系统现已具备完整的图形界面能力和智能化主题适配，SlashPanel 组件的功能也被成功集成到 Thread 组件中：
+**更新** 经过完全重构的 Ink 终端应用架构，系统现已具备完整的图形界面能力和智能化主题适配，SlashPanel 组件的功能也被成功集成到 Thread 组件中：
 
 ### 主要优势
 
-1. **现代化界面**：基于 React Ink 的优雅终端界面
+1. **现代化终端界面**：基于 React Ink 的优雅终端界面
 2. **高效性能**：流式处理和增量渲染提升响应速度
 3. **丰富功能**：完整的 Slash 命令系统和会话管理
 4. **全新视觉设计**：OpenCode 风格的图形界面
 5. **语义化主题系统**：集中式颜色管理和自动主题适配
 6. **智能 Markdown 处理**：优化的语法预处理和渲染
-7. **figlet 字体支持**：大标题和品牌标识
+7. **ink-big-text 字体支持**：大标题和品牌标识
 8. **动态线程ID管理**：支持会话切换和重放
 9. **适配器工厂函数**：灵活的适配器创建机制
 10. **增强的 Slash 命令系统**：上下文绑定和命令执行
@@ -883,9 +934,11 @@ onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。
 12. **配置中心集成**：Python 环境和工具配置管理
 13. **底部状态栏设计**：StatusBarPrimitive 实现的现代化底部状态行
 14. **SlashPanel 集成**：命令面板功能的无缝集成
-15. **良好的扩展性**：模块化设计便于功能扩展
-16. **稳定可靠**：完善的错误处理和资源管理
-17. **跨平台兼容**：支持多种终端环境和主题模式
+15. **对话框组件**：@inkjs/ui 提供的现代化对话框
+16. **Python 环境管理**：完整的虚拟环境和依赖管理
+17. **良好的扩展性**：模块化设计便于功能扩展
+18. **稳定可靠**：完善的错误处理和资源管理
+19. **跨平台兼容**：支持多种终端环境和主题模式
 
 ### 技术亮点
 
@@ -894,7 +947,7 @@ onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。
 - **智能 Markdown 处理**：优化的语法预处理和渲染
 - **工具集成**：丰富的工具调用能力和安全性保障
 - **会话持久化**：基于 SQLite 的智能会话管理
-- **字体系统**：figlet 字体支持和自动回退机制
+- **字体系统**：ink-big-text 字体支持和渐变效果
 - **终端模式检测**：根据环境变量自动适配主题
 - **动态适配器**：基于工厂函数的适配器创建机制
 - **Ref 缓存**：高效的 threadId 管理和缓存策略
@@ -904,5 +957,8 @@ onionCode 的 React 终端 UI 组件展现了现代 CLI 应用的最佳实践。
 - **底部状态栏**：现代化的状态栏设计和布局
 - **SlashPanel 集成**：命令面板功能的无缝集成
 - **配置面板**：多步骤配置流程的设计和实现
+- **对话框组件**：@inkjs/ui 提供的现代化 UI 组件
+- **Python 环境管理**：虚拟环境创建和依赖安装的完整流程
+- **大字体渲染**：ink-big-text 组件的优化渲染效果
 
 该组件为构建高质量的 CLI AI 应用提供了优秀的参考实现，其设计理念和架构模式值得在类似项目中借鉴和学习。

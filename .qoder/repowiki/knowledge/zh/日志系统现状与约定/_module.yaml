@@ -1,0 +1,13 @@
+schema_version: 1
+module_path: logging_system
+title: 日志系统现状与约定
+scope: []
+source_files:
+    - src/agent/cli.ts
+    - src/agent/agent.ts
+    - src/ink/runtime/adapter.ts
+    - src/agent/tools/exec.ts
+    - src/agent/tools/run_js.ts
+    - src/agent/tools/run_py.ts
+depends_on: []
+related_to: []

@@ -3,75 +3,87 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-06-24T08:59:06Z"
+exported_at: "2026-06-25T03:11:57Z"
 modules:
     "":
-        dir_name: TARS 风格 CLI AI Agent
-        title: TARS 风格 CLI AI Agent
-        scope: []
-        source_files: []
-        children: []
-        depends_on: []
-        related_to: []
-    assistant_ui:
-        dir_name: Assistant UI 技能文档
-        title: Assistant UI 技能文档
+        dir_name: 洋葱代码智能体平台
+        title: 洋葱代码智能体平台
         scope:
-            - .agents/skills/assistant-ui/
+            - package.json
+            - tsconfig.json
+            - README.md
+            - .gitignore
+            - CLAUDE.md
+            - pnpm-lock.yaml
+            - skills-lock.json
+            - .agents/
+        source_files: []
+        children:
+            - agent_core
+            - ink_ui
+        depends_on: []
+        related_to: []
+    agent_core:
+        dir_name: 智能体核心引擎与技能生态
+        title: 智能体核心引擎与技能生态
+        scope:
+            - src/agent/
         source_files: []
         children: []
         depends_on: []
-        related_to: []
+        related_to:
+            - path: ink_ui
     build_system:
         dir_name: 构建与发布系统_2
         title: 构建与发布系统
         scope: []
         source_files:
             - package.json
+            - vite.config.ts
             - tsconfig.json
-            - bin/onionCode.js
             - pnpm-lock.yaml
+            - bin/onionCode.js
         children: []
         depends_on: []
         related_to: []
     configuration_system:
-        dir_name: 配置系统：环境变量与 JSON 文件分层管理_2
-        title: 配置系统：环境变量与 JSON 文件分层管理
+        dir_name: 配置系统：分层架构与运行时管理
+        title: 配置系统：分层架构与运行时管理
         scope: []
         source_files:
-            - .env
             - src/agent/config.ts
             - src/agent/agent.ts
-            - .data/config.json
-            - skills-lock.json
-            - package.json
+            - src/ink/screens/ConfigPanel.tsx
+            - src/agent/python_env.ts
+            - .env
         children: []
         depends_on: []
         related_to: []
     dependency_management:
-        dir_name: 基于 pnpm 的依赖管理与技能锁定机制
-        title: 基于 pnpm 的依赖管理与技能锁定机制
+        dir_name: 依赖管理体系：pnpm + Skills 锁机制
+        title: 依赖管理体系：pnpm + Skills 锁机制
         scope: []
         source_files:
             - package.json
             - pnpm-lock.yaml
             - skills-lock.json
-            - tsconfig.json
+            - CLAUDE.md
         children: []
         depends_on: []
         related_to: []
     error_handling:
-        dir_name: 错误处理与安全防护机制_2
-        title: 错误处理与安全防护机制
+        dir_name: 错误处理与安全防御机制
+        title: 错误处理与安全防御机制
         scope: []
         source_files:
             - src/agent/cli.ts
             - src/agent/tools/exec.ts
-            - src/agent/tools/security.ts
             - src/agent/tools/run_py.ts
+            - src/agent/tools/run_js.ts
             - src/agent/tools/web_fetch.ts
+            - src/agent/tools/security.ts
+            - src/ink/runtime/adapter.ts
             - src/agent/sessions.ts
-            - src/agent/python_env.ts
         children: []
         depends_on: []
         related_to: []
@@ -89,23 +101,25 @@ modules:
         children: []
         depends_on: []
         related_to: []
-    logging_system:
-        dir_name: 基于控制台与 UI 渲染的简易日志输出
-        title: 基于控制台与 UI 渲染的简易日志输出
-        scope: []
-        source_files:
-            - src/agent/cli.ts
-            - src/agent/config.ts
-            - src/agent/style.ts
+    ink_ui:
+        dir_name: 终端 AI 对话界面与运行时适配
+        title: 终端 AI 对话界面与运行时适配
+        scope:
+            - src/ink/
+        source_files: []
         children: []
         depends_on: []
-        related_to: []
-    ui:
-        dir_name: 终端对话交互界面
-        title: 终端对话交互界面
-        scope:
-            - src/agent/ui/
-        source_files: []
+        related_to:
+            - path: agent_core
+    logging_system:
+        dir_name: 日志与输出机制
+        title: 日志与输出机制
+        scope: []
+        source_files:
+            - src/ui/main.ts
+            - src/agent/config.ts
+            - src/agent/tools/exec.ts
+            - src/agent/tools/run_py.ts
         children: []
         depends_on: []
         related_to: []

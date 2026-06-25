@@ -45,15 +45,31 @@ program
 
 // ── 默认：Ink 全量交互界面 ────────────────────────────────────
 program.action(() => {
+  let didExit = false;
+  let unmountApp = () => {};
+  const exit = () => {
+    if (didExit) return;
+    didExit = true;
+    process.stdin.off("data", onInputData);
+    process.stdout.write(status.bye + "\n");
+    unmountApp();
+    process.exit(0);
+  };
+
+  const onInputData = (chunk: Buffer | string) => {
+    if (chunk.toString("utf8").includes("\u0003")) exit();
+  };
+
+  process.stdin.on("data", onInputData);
+
   const { unmount } = render(
     React.createElement(App, {
-      onExit: () => {
-        process.stdout.write(status.bye + "\n");
-        unmount();
-        process.exit(0);
-      },
+      onExit: exit,
     }),
   );
+  unmountApp = unmount;
+
+  process.once("SIGINT", exit);
 });
 
 program.parse(process.argv);

@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: agent_core
+title: 智能体核心引擎与技能生态
+scope:
+    - src/agent/
+source_files: []
+depends_on: []
+related_to:
+    - path: ink_ui

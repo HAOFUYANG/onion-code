@@ -1,11 +1,10 @@
-import chalk from "chalk";
-
 export interface SlashCommandContext {
   newThread: () => void;
   showHelp: () => void;
   showSessions: () => void;
   rewindThread: (threadId: string) => void;
   openConfig: () => void;
+  showNotice: (message: string) => void;
 }
 
 export interface SlashCommand {
@@ -31,11 +30,7 @@ export const slashCommands: SlashCommand[] = [
     description: "恢复某条聊天记录（用法：/rewind <thread_id>）",
     handler: (ctx, args) => {
       if (!args?.trim()) {
-        console.log(
-          chalk.dim(
-            "\n  用法：/rewind <thread_id>  先用 /sessions 查看 ID\n",
-          ),
-        );
+        ctx.showNotice("\n  用法：/rewind <thread_id>  先用 /sessions 查看 ID\n");
         return;
       }
       ctx.rewindThread(args.trim());
@@ -55,12 +50,8 @@ export const slashCommands: SlashCommand[] = [
   {
     name: "theme",
     description: "切换终端主题（即将支持）",
-    handler: () => {
-      console.log(
-        chalk.dim(
-          "\n  /theme 暂未实现。主题系统正在装配，别催，它还在穿宇航服。\n",
-        ),
-      );
+    handler: (ctx) => {
+      ctx.showNotice("\n  /theme 暂未实现。主题系统后续会接入配置中心。\n");
     },
   },
   {

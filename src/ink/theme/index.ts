@@ -1,82 +1,305 @@
+import React from "react";
+
 // ── 终端主题自适应系统 ──────────────────────────────────────────
-// 参考 OpenCode system theme：根据终端背景自动切换 light/dark 色板，
-// 确保白色终端下文字与 UI 元素同样清晰美观。
+// 同时感知终端背景明暗与颜色能力，尽量尊重用户现有终端配置。
 
 export type TerminalMode = "dark" | "light";
+export type ColorLevel = "none" | "ansi16" | "ansi256" | "truecolor";
+
+type ResolvedColor = string | undefined;
+
+interface TokenScale {
+  truecolor: ResolvedColor;
+  ansi256?: ResolvedColor;
+  ansi16?: ResolvedColor;
+  none?: ResolvedColor;
+}
+
+interface ThemeScale {
+  appBg: TokenScale;
+  primary: TokenScale;
+  accent: TokenScale;
+  cancel: TokenScale;
+  textBold: TokenScale;
+  textMuted: TokenScale;
+  textSubtle: TokenScale;
+  inputBg: TokenScale;
+  homeBg: TokenScale;
+  border: TokenScale;
+  slashBg: TokenScale;
+  slashFg: TokenScale;
+  titleGradient: {
+    truecolor: string[];
+    ansi256?: string[];
+    ansi16?: string[];
+    none?: string[];
+  };
+}
 
 /**
- * 检测终端背景模式。
- * 优先读取 COLORFGBG 环境变量（格式 "fg;bg"，值为 ANSI 颜色索引 0-15）：
- *   "15;0" → 白字黑底 → dark
- *   "0;15" → 黑字白底 → light
- * 无法检测时默认 dark（最常见终端配置）。
+ * 跨平台终端背景色检测。
+ *
+ * 优先级：
+ *   1. ONIONCODE_THEME=light|dark  — 用户显式覆盖，最高优先级
+ *   2. COLORFGBG="fg;bg"           — iTerm2 等设置（bg<7→dark, bg>=7→light）
+ *   3. 默认 dark                  — 现代开发者终端绝大多数为深色
+ *
+ * 注：
+ *   - 不再对 Apple_Terminal 做默认 light 推断；这个启发式在深色 Profile
+ *     或 IDE/中间终端环境里容易误判。Apple Terminal 用户如需浅色主题，
+ *     可以显式设置 ONIONCODE_THEME=light。
  */
 export function detectTerminalMode(): TerminalMode {
-  // 1. TERM_PROGRAM_VERSION 不含主题信息，先检查 TERM_PROGRAM
-  // macOS Terminal.app 默认白色背景，系统不设 COLORFGBG
-  const termProgram = process.env.TERM_PROGRAM;
-  if (termProgram === "Apple_Terminal") {
-    // Apple Terminal 默认白底，除非用户显式设置了暗色 Profile
-    // 用 COLORFGBG 覆盖此默认值（如果存在）
-    // → 先走 COLORFGBG 判断，最终 fallback 返回 light
-  }
+  const explicit = process.env.ONIONCODE_THEME?.toLowerCase();
+  if (explicit === "light" || explicit === "dark") return explicit;
 
-  // 2. COLORFGBG：iTerm2 / 部分终端会设置该变量
   const colorfgbg = process.env.COLORFGBG;
   if (colorfgbg) {
     const parts = colorfgbg.split(";");
     const bg = parseInt(parts[parts.length - 1], 10);
-    if (!isNaN(bg)) {
-      // ANSI 颜色索引：0=黑,7=白,8=暗灰,15=亮白
-      // bg >= 7（白/亮白）→ light；其余 → dark
-      return bg >= 7 ? "light" : "dark";
-    }
+    if (!Number.isNaN(bg)) return bg >= 7 ? "light" : "dark";
   }
 
-  // 3. COLORTERM / NO_COLOR 等标准环境变量
-  if (process.env.NO_COLOR !== undefined) return "light";
-
-  // 4. Apple Terminal fallback → light（白底）
-  if (termProgram === "Apple_Terminal") return "light";
-
-  // 5. 其他终端（iTerm2/Warp/Alacritty 等）默认 dark
   return "dark";
 }
 
+/**
+ * 颜色能力检测。
+ *
+ * 优先级：
+ *   1. NO_COLOR            → none
+ *   2. stdout.getColorDepth() → truecolor / ansi256 / ansi16 / none
+ *   3. TERM / COLORTERM 兜底
+ */
+export function detectColorLevel(): ColorLevel {
+  if (process.env.NO_COLOR !== undefined) return "none";
+
+  const depth =
+    typeof process.stdout?.getColorDepth === "function"
+      ? process.stdout.getColorDepth()
+      : 1;
+
+  if (depth >= 24) return "truecolor";
+  if (depth >= 8) return "ansi256";
+  if (depth >= 4) return "ansi16";
+
+  const colorTerm = process.env.COLORTERM?.toLowerCase() ?? "";
+  if (colorTerm.includes("truecolor") || colorTerm.includes("24bit")) {
+    return "truecolor";
+  }
+
+  const term = process.env.TERM?.toLowerCase() ?? "";
+  if (term.includes("256color")) return "ansi256";
+  if (term && term !== "dumb") return "ansi16";
+
+  return "none";
+}
+
+function pickColor(scale: TokenScale, level: ColorLevel): ResolvedColor {
+  switch (level) {
+    case "truecolor":
+      return scale.truecolor;
+    case "ansi256":
+      return scale.ansi256 ?? scale.truecolor;
+    case "ansi16":
+      return scale.ansi16 ?? scale.ansi256 ?? scale.truecolor;
+    case "none":
+      return scale.none;
+  }
+}
+
+function pickGradient(
+  scale: ThemeScale["titleGradient"],
+  level: ColorLevel,
+): string[] | undefined {
+  switch (level) {
+    case "truecolor":
+      return scale.truecolor;
+    case "ansi256":
+      return scale.ansi256 ?? scale.truecolor;
+    case "ansi16":
+      return scale.ansi16 ?? scale.ansi256 ?? scale.truecolor;
+    case "none":
+      return scale.none;
+  }
+}
+
+function resolveTheme(scale: ThemeScale, level: ColorLevel) {
+  return {
+    appBg: pickColor(scale.appBg, level),
+    primary: pickColor(scale.primary, level),
+    accent: pickColor(scale.accent, level),
+    cancel: pickColor(scale.cancel, level),
+    textBold: pickColor(scale.textBold, level),
+    textMuted: pickColor(scale.textMuted, level),
+    textSubtle: pickColor(scale.textSubtle, level),
+    // 保留输入区域背景色；其余区域是否使用背景色由组件自行决定。
+    inputBg: pickColor(scale.inputBg, level),
+    homeBg: pickColor(scale.homeBg, level),
+    border: pickColor(scale.border, level),
+    slashBg: pickColor(scale.slashBg, level),
+    slashFg: pickColor(scale.slashFg, level),
+    titleGradient: pickGradient(scale.titleGradient, level),
+  };
+}
+
 export const terminalMode = detectTerminalMode();
+export const colorLevel = detectColorLevel();
 
 // ── 语义色板 ────────────────────────────────────────────────────
-// 每个语义 token 在 dark/light 下有不同值，确保对比度始终达标。
-// 简化原 18 个 C token → 13 个语义 T token，消除冗余别名。
+// 组件只消费语义 token，最终颜色值由终端能力决定。
 
-const DARK = {
-  primary: "#3b82f6", // 蓝 — 主强调色（竖线/标签/图标）
-  accent: "#f59e0b", // 橙 — 次强调色（Tip/high/spinner）
-  cancel: "#f87171", // 红 — 中断/错误
-  textBold: "#e4e4e7", // 亮灰白 — 比纯白更克制，接近 OpenCode 小字观感
-  textMuted: "#9a9aa2", // 中灰 — 辅助文本（说明/分隔）
-  textSubtle: "#666670", // 深灰 — 极弱对比（版本号/弱提示）
-  inputBg: "#222225", // 深灰黑 — 输入区背景
-  homeBg: "#222225", // 同上 — 首页输入区背景
-  border: "#3b3b3b", // 暗灰 — 边框
-  slashBg: "#1e3a5f", // 深蓝 — slash 高亮背景
-  slashFg: "white", // 白 — slash 高亮前景
-  titleGradient: ["#a855f7", "#8b5cf6", "#6366f1", "#3b82f6"],
+const DARK: ThemeScale = {
+  appBg: {
+    truecolor: "#000000",
+    ansi16: "black",
+    none: undefined,
+  },
+  primary: {
+    truecolor: "#3b82f6",
+    ansi16: "blue",
+    none: undefined,
+  },
+  accent: {
+    truecolor: "#f59e0b",
+    ansi16: "yellow",
+    none: undefined,
+  },
+  cancel: {
+    truecolor: "#f87171",
+    ansi16: "red",
+    none: undefined,
+  },
+  textBold: {
+    truecolor: "#e4e4e7",
+    ansi16: "white",
+    none: undefined,
+  },
+  textMuted: {
+    truecolor: "#9a9aa2",
+    ansi16: "gray",
+    none: undefined,
+  },
+  textSubtle: {
+    truecolor: "#666670",
+    ansi16: "gray",
+    none: undefined,
+  },
+  inputBg: {
+    truecolor: "#222225",
+    ansi16: "black",
+    none: undefined,
+  },
+  homeBg: {
+    truecolor: "#222225",
+    ansi16: "black",
+    none: undefined,
+  },
+  border: {
+    truecolor: "#3b3b3b",
+    ansi16: "gray",
+    none: undefined,
+  },
+  slashBg: {
+    truecolor: "#1e3a5f",
+    ansi16: "blue",
+    none: undefined,
+  },
+  slashFg: {
+    truecolor: "white",
+    ansi16: "white",
+    none: undefined,
+  },
+  titleGradient: {
+    truecolor: ["#a855f7", "#8b5cf6", "#6366f1", "#3b82f6"],
+    ansi16: ["magenta", "blue"],
+    none: undefined,
+  },
 };
 
-const LIGHT = {
-  primary: "#2563eb", // 深蓝 — 白底上更易辨认的强调色
-  accent: "#d97706", // 深橙 — 白底上避免过亮的橙色
-  cancel: "#dc2626", // 深红 — 白底上更醒目
-  textBold: "#2b313a", // 近黑灰 — 高对比但不生硬
-  textMuted: "#6b7280", // 中灰 — 白底辅助文字
-  textSubtle: "#9ca3af", // 浅灰 — 白底上的极弱对比
-  inputBg: "#f5f5f5", // 浅灰 — 输入区背景
-  homeBg: "#f5f5f5", // 同上 — 首页输入区背景
-  border: "#d4d4d4", // 浅灰 — 边框
-  slashBg: "#dbeafe", // 淡蓝 — slash 高亮背景
-  slashFg: "#1e40af", // 深蓝 — slash 高亮前景
-  titleGradient: ["#7c3aed", "#6d28d9", "#4f46e5", "#2563eb"],
+const LIGHT: ThemeScale = {
+  appBg: {
+    truecolor: "#ffffff",
+    ansi16: "white",
+    none: undefined,
+  },
+  primary: {
+    truecolor: "#2563eb",
+    ansi16: "blue",
+    none: undefined,
+  },
+  accent: {
+    truecolor: "#d97706",
+    ansi16: "yellow",
+    none: undefined,
+  },
+  cancel: {
+    truecolor: "#dc2626",
+    ansi16: "red",
+    none: undefined,
+  },
+  textBold: {
+    truecolor: "#2b313a",
+    ansi16: "black",
+    none: undefined,
+  },
+  textMuted: {
+    truecolor: "#6b7280",
+    ansi16: "gray",
+    none: undefined,
+  },
+  textSubtle: {
+    truecolor: "#9ca3af",
+    ansi16: "gray",
+    none: undefined,
+  },
+  inputBg: {
+    truecolor: "#f5f5f5",
+    ansi16: "white",
+    none: undefined,
+  },
+  homeBg: {
+    truecolor: "#f5f5f5",
+    ansi16: "white",
+    none: undefined,
+  },
+  border: {
+    truecolor: "#d4d4d4",
+    ansi16: "gray",
+    none: undefined,
+  },
+  slashBg: {
+    truecolor: "#dbeafe",
+    ansi16: "white",
+    none: undefined,
+  },
+  slashFg: {
+    truecolor: "#1e40af",
+    ansi16: "blue",
+    none: undefined,
+  },
+  titleGradient: {
+    truecolor: ["#7c3aed", "#6d28d9", "#4f46e5", "#2563eb"],
+    ansi16: ["magenta", "blue"],
+    none: undefined,
+  },
 };
 
-export const T = terminalMode === "dark" ? DARK : LIGHT;
+export const T = resolveTheme(terminalMode === "dark" ? DARK : LIGHT, colorLevel);
+export type InkTheme = typeof T;
+export type ThemeColorToken = Exclude<keyof InkTheme, "titleGradient">;
+
+export function useInkTheme() {
+  return React.useMemo(
+    () => ({
+      mode: terminalMode,
+      colorLevel,
+      tokens: T,
+      getColor(token: ThemeColorToken) {
+        return T[token];
+      },
+      hasColor: colorLevel !== "none",
+    }),
+    [],
+  );
+}

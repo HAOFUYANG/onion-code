@@ -1,0 +1,15 @@
+schema_version: 1
+module_path: ""
+title: 洋葱代码智能体平台
+scope:
+    - package.json
+    - tsconfig.json
+    - README.md
+    - .gitignore
+    - CLAUDE.md
+    - pnpm-lock.yaml
+    - skills-lock.json
+    - .agents/
+source_files: []
+depends_on: []
+related_to: []

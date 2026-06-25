@@ -1,6 +1,8 @@
 import React from "react";
-import { Box, Text } from "ink";
-import { T } from "../theme/index.js";
+import { Box, useStdout } from "ink";
+import { useInkTheme, type ThemeColorToken } from "../theme/index.js";
+import { ThemedBox } from "./ThemedBox.js";
+import { ThemedText } from "./ThemedText.js";
 
 type DialogTone = "default" | "info" | "success" | "danger";
 
@@ -13,16 +15,16 @@ interface DialogProps {
   width?: number;
 }
 
-function getToneColor(tone: DialogTone): string {
+function getToneColor(tone: DialogTone): ThemeColorToken {
   switch (tone) {
     case "info":
-      return T.primary;
+      return "primary";
     case "success":
-      return T.accent;
+      return "accent";
     case "danger":
-      return T.cancel;
+      return "cancel";
     default:
-      return T.border;
+      return "border";
   }
 }
 
@@ -34,27 +36,31 @@ export function Dialog({
   tone = "default",
   width = 76,
 }: DialogProps) {
+  const theme = useInkTheme();
   const toneColor = getToneColor(tone);
+  const { stdout } = useStdout();
+  const columns = stdout.columns ?? width;
+  const resolvedWidth = Math.max(36, Math.min(width, columns - 4));
 
   return (
     <Box flexGrow={1} justifyContent="center" alignItems="center" paddingY={1}>
-      <Box
-        width={width}
+      <ThemedBox
+        width={resolvedWidth}
         flexDirection="column"
         borderStyle="round"
-        borderColor={T.border}
+        borderVariant="border"
         paddingX={2}
         paddingY={1}
-        backgroundColor={T.homeBg}
+        backgroundVariant="homeBg"
       >
         <Box marginBottom={1} flexDirection="column">
           <Box>
-            <Text color={toneColor}>{"● "}</Text>
-            <Text color={T.textBold}>{title}</Text>
+            <ThemedText variant={toneColor}>{"● "}</ThemedText>
+            <ThemedText variant="textBold">{title}</ThemedText>
           </Box>
           {subtitle ? (
             <Box marginTop={1}>
-              <Text color={T.textMuted}>{subtitle}</Text>
+              <ThemedText variant="textMuted">{subtitle}</ThemedText>
             </Box>
           ) : null}
         </Box>
@@ -62,13 +68,18 @@ export function Dialog({
         <Box flexDirection="column">{children}</Box>
 
         {actions ? (
-          <Box marginTop={1} borderTop={true} borderStyle="single" borderColor={T.border}>
+          <Box
+            marginTop={1}
+            borderTop={true}
+            borderStyle="single"
+            borderColor={theme.getColor("border")}
+          >
             <Box paddingTop={1}>
-              <Text color={T.textSubtle}>{actions}</Text>
+              <ThemedText variant="textSubtle">{actions}</ThemedText>
             </Box>
           </Box>
         ) : null}
-      </Box>
+      </ThemedBox>
     </Box>
   );
 }

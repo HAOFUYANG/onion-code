@@ -1,5 +1,5 @@
 import React from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, useInput } from "ink";
 import { Select, TextInput, StatusMessage } from "@inkjs/ui";
 import type { Option } from "@inkjs/ui";
 import {
@@ -13,10 +13,16 @@ import {
   PYTHON_DATA_PACKAGES,
 } from "../../agent/python_env.js";
 import { Dialog } from "../components/Dialog.js";
-import { T } from "../theme/index.js";
+import { ThemedText } from "../components/ThemedText.js";
 
 // ── 配置步骤枚举 ────────────────────────────────────────────────
-type Step = "module" | "python" | "done";
+type Step =
+  | "module"
+  | "pipIndexUrl"
+  | "pipTrustedHost"
+  | "autoInstall"
+  | "initPython"
+  | "done";
 
 interface ConfigPanelProps {
   onClose: () => void;
@@ -40,11 +46,40 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
     text: string;
     variant: "success" | "error";
   } | null>(null);
-  const currentRef = React.useRef(loadConfig());
+  const [draft, setDraft] = React.useState<AppConfig>(() => loadConfig());
 
-  // 允许 ESC 关闭面板
+  const saveDraft = React.useCallback(
+    (nextDraft: AppConfig = draft, nextMessage?: typeof message) => {
+      saveConfig(nextDraft);
+      setDraft(nextDraft);
+      setMessage(
+        nextMessage ?? {
+          text: `配置已保存到 ${getConfigPath()}`,
+          variant: "success",
+        },
+      );
+      setStep("done");
+    },
+    [draft, message],
+  );
+
+  const goBack = React.useCallback(() => {
+    if (step === "module") {
+      onClose();
+      return;
+    }
+    if (step === "pipIndexUrl" || step === "done") {
+      setStep("module");
+      return;
+    }
+    if (step === "pipTrustedHost") setStep("pipIndexUrl");
+    if (step === "autoInstall") setStep("pipTrustedHost");
+    if (step === "initPython") setStep("autoInstall");
+  }, [onClose, step]);
+
+  // ESC 按层级返回；只有在模块首页才关闭配置面板。
   useInput((_input, key) => {
-    if (key.escape) onClose();
+    if (key.escape) goBack();
   });
 
   // ── Step: 模块选择 ──────────────────────────────────────────
@@ -58,9 +93,9 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
       >
         <Box marginBottom={1} flexDirection="column">
           <Box marginBottom={1}>
-            <Text color={T.textMuted}>
+            <ThemedText variant="textMuted">
               选择要配置的模块。后续可以继续扩展模型、主题和权限等页面。
-            </Text>
+            </ThemedText>
           </Box>
           <Select
             options={moduleOptions}
@@ -68,7 +103,7 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
               if (value === "exit") {
                 onClose();
               } else {
-                setStep("python");
+                setStep("pipIndexUrl");
               }
             }}
           />
@@ -77,110 +112,135 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
     );
   }
 
-  // ── Step: Python 配置 ────────────────────────────────────────
-  if (step === "python") {
-    const handleSave = (nextConfig: AppConfig) => {
-      saveConfig(nextConfig);
-      currentRef.current = nextConfig;
-      setMessage({ text: `配置已保存到 ${getConfigPath()}`, variant: "success" });
-      setStep("done");
-    };
-
+  // ── Step: pip index-url ─────────────────────────────────────
+  if (step === "pipIndexUrl") {
     return (
       <Dialog
         title="Python 运行环境"
         subtitle={`数据包预设: ${PYTHON_DATA_PACKAGES.join(", ")}`}
         tone="info"
-        actions="enter 保存当前项  ·  esc 返回"
+        actions="enter 下一项  ·  esc 返回"
       >
         <Box flexDirection="column">
-          {/* pip index-url */}
-          <Box marginBottom={1} flexDirection="column">
-            <Text color={T.textMuted}>pip index-url</Text>
-            <TextInput
-              defaultValue={currentRef.current.python.pip.indexUrl}
-              onSubmit={(indexUrl) => {
-                handleSave({
-                  ...currentRef.current,
-                  python: {
-                    ...currentRef.current.python,
-                    pip: {
-                      ...currentRef.current.python.pip,
-                      indexUrl: indexUrl.trim(),
-                    },
+          <ThemedText variant="textMuted">pip index-url</ThemedText>
+          <TextInput
+            defaultValue={draft.python.pip.indexUrl}
+            onSubmit={(indexUrl) => {
+              setDraft((current) => ({
+                ...current,
+                python: {
+                  ...current.python,
+                  pip: {
+                    ...current.python.pip,
+                    indexUrl: indexUrl.trim(),
                   },
-                });
-              }}
-            />
-          </Box>
+                },
+              }));
+              setStep("pipTrustedHost");
+            }}
+          />
+        </Box>
+      </Dialog>
+    );
+  }
 
-          {/* pip trusted-host */}
-          <Box marginBottom={1} flexDirection="column">
-            <Text color={T.textMuted}>pip trusted-host</Text>
-            <TextInput
-              defaultValue={currentRef.current.python.pip.trustedHost}
-              onSubmit={(trustedHost) => {
-                handleSave({
-                  ...currentRef.current,
-                  python: {
-                    ...currentRef.current.python,
-                    pip: {
-                      ...currentRef.current.python.pip,
-                      trustedHost: trustedHost.trim(),
-                    },
+  // ── Step: pip trusted-host ───────────────────────────────────
+  if (step === "pipTrustedHost") {
+    return (
+      <Dialog
+        title="Python 运行环境"
+        subtitle="pip trusted-host"
+        tone="info"
+        actions="enter 下一项  ·  esc 返回"
+      >
+        <Box flexDirection="column">
+          <ThemedText variant="textMuted">pip trusted-host</ThemedText>
+          <TextInput
+            defaultValue={draft.python.pip.trustedHost}
+            onSubmit={(trustedHost) => {
+              setDraft((current) => ({
+                ...current,
+                python: {
+                  ...current.python,
+                  pip: {
+                    ...current.python.pip,
+                    trustedHost: trustedHost.trim(),
                   },
-                });
-              }}
-            />
-          </Box>
+                },
+              }));
+              setStep("autoInstall");
+            }}
+          />
+        </Box>
+      </Dialog>
+    );
+  }
 
-          {/* autoInstall */}
-          <Box marginBottom={1} flexDirection="column">
-            <Text color={T.textMuted}>自动安装 Python 依赖？</Text>
-            <Select
-              options={boolOptions}
-              defaultValue={
-                currentRef.current.python.autoInstall ? "true" : "false"
+  // ── Step: autoInstall ────────────────────────────────────────
+  if (step === "autoInstall") {
+    return (
+      <Dialog
+        title="Python 运行环境"
+        subtitle="自动安装 Python 依赖"
+        tone="info"
+        actions="enter 下一项  ·  esc 返回"
+      >
+        <Box flexDirection="column">
+          <ThemedText variant="textMuted">自动安装 Python 依赖？</ThemedText>
+          <Select
+            options={boolOptions}
+            defaultValue={draft.python.autoInstall ? "true" : "false"}
+            onChange={(value) => {
+              setDraft((current) => ({
+                ...current,
+                python: {
+                  ...current.python,
+                  autoInstall: value === "true",
+                },
+              }));
+              setStep("initPython");
+            }}
+          />
+        </Box>
+      </Dialog>
+    );
+  }
+
+  // ── Step: 初始化 Python 环境 ─────────────────────────────────
+  if (step === "initPython") {
+    return (
+      <Dialog
+        title="Python 运行环境"
+        subtitle="保存配置"
+        tone="info"
+        actions="enter 保存  ·  esc 返回"
+      >
+        <Box flexDirection="column">
+          <ThemedText variant="textMuted">立即初始化 Python 环境？</ThemedText>
+          <Select
+            options={boolOptions}
+            onChange={(value) => {
+              if (value !== "true") {
+                saveDraft(draft);
+                return;
               }
-              onChange={(value) => {
-                handleSave({
-                  ...currentRef.current,
-                  python: {
-                    ...currentRef.current.python,
-                    autoInstall: value === "true",
-                  },
-                });
-              }}
-            />
-          </Box>
 
-          {/* 初始化 Python 环境 */}
-          <Box marginBottom={1} flexDirection="column">
-            <Text color={T.textMuted}>立即初始化 Python 环境？</Text>
-            <Select
-              options={boolOptions}
-              onChange={(value) => {
-                if (value === "true") {
-                  const result = ensurePythonEnvironment(
-                    PYTHON_DATA_PACKAGES,
-                    currentRef.current,
-                  );
-                  if (result.ok) {
-                    setMessage({
+              saveConfig(draft);
+              const result = ensurePythonEnvironment(PYTHON_DATA_PACKAGES, draft);
+              setMessage(
+                result.ok
+                  ? {
                       text: `Python 环境已就绪：${result.pythonPath}`,
                       variant: "success",
-                    });
-                  } else {
-                    setMessage({
+                    }
+                  : {
                       text: `Python 环境初始化失败：${result.error}`,
                       variant: "error",
-                    });
-                  }
-                }
-                setStep("done");
-              }}
-            />
-          </Box>
+                    },
+              );
+              setStep("done");
+            }}
+          />
         </Box>
       </Dialog>
     );
@@ -192,7 +252,7 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
       title="配置结果"
       subtitle="修改已应用到当前配置文件"
       tone={message?.variant === "error" ? "danger" : "success"}
-      actions="esc 返回"
+      actions="esc 返回配置中心"
     >
       {message && (
         <Box marginBottom={1}>
@@ -201,7 +261,9 @@ export function ConfigPanel({ onClose }: ConfigPanelProps) {
           </StatusMessage>
         </Box>
       )}
-      <Text color={T.textMuted}>你可以继续通过 `/config` 返回这里修改其他配置。</Text>
+      <ThemedText variant="textMuted">
+        你可以继续通过 `/config` 返回这里修改其他配置。
+      </ThemedText>
     </Dialog>
   );
 }

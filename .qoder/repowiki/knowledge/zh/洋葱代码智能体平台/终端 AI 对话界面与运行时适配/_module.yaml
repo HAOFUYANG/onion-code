@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: ink_ui
+title: 终端 AI 对话界面与运行时适配
+scope:
+    - src/ink/
+source_files: []
+depends_on: []
+related_to:
+    - path: agent_core
