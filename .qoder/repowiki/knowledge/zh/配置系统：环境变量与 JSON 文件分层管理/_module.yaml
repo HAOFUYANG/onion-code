@@ -6,8 +6,7 @@ source_files:
     - .env
     - src/agent/config.ts
     - src/agent/agent.ts
-    - .data/config.json
-    - skills-lock.json
     - package.json
+    - vite.config.ts
 depends_on: []
 related_to: []

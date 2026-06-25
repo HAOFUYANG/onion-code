@@ -2,7 +2,7 @@ import type {
   ChatModelAdapter,
   ChatModelRunOptions,
 } from "@assistant-ui/react-ink";
-import { runAgentStream } from "../agent.js";
+import { runAgentStream } from "../../agent/agent.js";
 
 /**
  * LangGraph ↔ assistant-ui 适配器

@@ -13,16 +13,16 @@ import {
   useAuiState,
 } from "@assistant-ui/react-ink";
 import { MarkdownTextPrimitive } from "@assistant-ui/react-ink-markdown";
+import { Spinner, StatusMessage } from "@inkjs/ui";
+import BigText from "ink-big-text";
 import {
   slashCommands,
   matchSlashCommands,
   formatSlashCommand,
   type SlashCommandContext,
-} from "../slash_commands.js";
-import { querySessions, renderSessionsTable } from "../sessions.js";
-import { T, terminalMode } from "./theme.js";
-import { createRequire } from "node:module";
-import figlet from "figlet";
+} from "../../agent/slash_commands.js";
+import { querySessions, renderSessionsTable } from "../../agent/sessions.js";
+import { T, terminalMode } from "../theme/index.js";
 import chalk from "chalk";
 
 // ── Markdown 流式输出优化 ────────────────────────────────────
@@ -51,35 +51,7 @@ const MARKDOWN_THEME: "dim" | "bright" =
 
 // ── 色彩系统已迁移至 theme.ts（语义色板 T，dark/light 自适应）──
 
-// ── figlet 大标题（渐变色，跟随主题，在 HomePage 内懒加载）──
-const _require = createRequire(import.meta.url);
-try {
-  const doomFont = _require("figlet/importable-fonts/Doom");
-  figlet.parseFont("Doom", doomFont);
-} catch {
-  // fallback to Standard
-}
-
-function gradientText(text: string, c1: string, c2: string): string {
-  const lines = text.split("\n").filter((l) => l.trim());
-  const n = lines.length;
-  return lines
-    .map((line, i) => {
-      const ratio = n > 1 ? i / (n - 1) : 0;
-      const r1 = parseInt(c1.slice(1, 3), 16),
-        g1 = parseInt(c1.slice(3, 5), 16),
-        b1 = parseInt(c1.slice(5, 7), 16);
-      const r2 = parseInt(c2.slice(1, 3), 16),
-        g2 = parseInt(c2.slice(3, 5), 16),
-        b2 = parseInt(c2.slice(5, 7), 16);
-      const r = Math.round(r1 + (r2 - r1) * ratio);
-      const g = Math.round(g1 + (g2 - g1) * ratio);
-      const b = Math.round(b1 + (b2 - b1) * ratio);
-      const hex = `#${r.toString(16).padStart(2, "0")}${g.toString(16).padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
-      return chalk.hex(hex)(line);
-    })
-    .join("\n");
-}
+// ── 首页大标题（改用 ink-big-text，风格更接近 OpenCode）──
 
 // ── 用户消息 ──────────────────────────────────────────────────
 const UserMessage = () => (
@@ -122,10 +94,6 @@ const AssistantMessage = () => (
                 preprocess={preprocessMarkdownStream}
                 theme={MARKDOWN_THEME}
               />
-              {/* streaming 时显示光标▮，完成后自动消失 */}
-              <MessagePartPrimitive.InProgress>
-                <Text color={T.primary}>{" ▮"}</Text>
-              </MessagePartPrimitive.InProgress>
             </>
           ),
           Reasoning: () => (
@@ -142,10 +110,9 @@ const AssistantMessage = () => (
         }}
       />
       <ErrorPrimitive.Root>
-        <Text color={T.cancel}>
-          {"✖ "}
+        <StatusMessage variant="error">
           <ErrorPrimitive.Message />
-        </Text>
+        </StatusMessage>
       </ErrorPrimitive.Root>
     </Box>
   </MessagePrimitive.Root>
@@ -154,8 +121,7 @@ const AssistantMessage = () => (
 // ── 加载状态 ──────────────────────────────────────────────────
 const Loading = () => (
   <LoadingPrimitive.Root paddingLeft={3} marginBottom={1}>
-    <LoadingPrimitive.Spinner color={T.accent} variant="dots" />
-    <Text color={T.accent}>{" 思考中  "}</Text>
+    <Spinner type="bouncingBar" label="thinking" />
     <LoadingPrimitive.ElapsedTime dimColor />
   </LoadingPrimitive.Root>
 );
@@ -192,16 +158,15 @@ const SlashPanel = ({
               <Text
                 backgroundColor={T.slashBg}
                 color={T.slashFg}
-                bold
               >{` /${cmd.name} `}</Text>
             ) : (
               <Text dimColor>{` /${cmd.name} `}</Text>
             )}
-            <Text dimColor>{`  ${cmd.description}`}</Text>
+            <Text color={T.textMuted}>{`  ${cmd.description}`}</Text>
           </Box>
         );
       })}
-      <Text dimColor>{"  tab 补全  ↑↓ 选择"}</Text>
+      <Text color={T.textSubtle}>{"  tab 补全  ↑↓ 选择"}</Text>
     </Box>
   );
 };
@@ -219,22 +184,24 @@ const FooterStatusBar = ({
     .join(" ");
   return (
     <StatusBarPrimitive.Root gap={0} paddingX={2}>
-      <Text color={T.primary} bold>{"■ "}</Text>
-      <Text color={T.primary} bold>{"Build"}</Text>
-      <Text dimColor>{" · "}</Text>
-      <Text bold color={T.textBold}>{modelDisplay}</Text>
+      <Text color={T.primary}>{"●"}</Text>
+      <Text color={T.textMuted}>{" build"}</Text>
+      <Text color={T.textSubtle}>{" · "}</Text>
+      <Text color={T.textBold}>
+        {modelDisplay}
+      </Text>
       {variant === "composer" ? (
         <>
-          <Text dimColor>{" · "}</Text>
+          <Text color={T.textSubtle}>{" · "}</Text>
           <StatusBarPrimitive.MessageCount dimColor />
         </>
       ) : (
         <>
           <Box flexGrow={1} />
-          <Text dimColor>{"/"}</Text>
-          <Text dimColor>{" commands  "}</Text>
-          <Text color={T.primary} bold>{"ctrl+c"}</Text>
-          <Text dimColor>{" exit"}</Text>
+          <Text color={T.textSubtle}>{"/"}</Text>
+          <Text color={T.textSubtle}>{" commands  "}</Text>
+          <Text color={T.textMuted}>{"ctrl+c"}</Text>
+          <Text color={T.textSubtle}>{" exit"}</Text>
         </>
       )}
     </StatusBarPrimitive.Root>
@@ -245,6 +212,7 @@ const FooterStatusBar = ({
 interface UseSlashCommandHandlerOptions {
   onNewThread: () => void;
   onRewindThread: (threadId: string) => void;
+  onOpenConfig: () => void;
 }
 
 function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
@@ -274,6 +242,10 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
     },
     rewindThread: (threadId: string) => {
       options.onRewindThread(threadId);
+      setCmdOutput(null);
+    },
+    openConfig: () => {
+      options.onOpenConfig();
       setCmdOutput(null);
     },
   });
@@ -369,30 +341,25 @@ function useSlashCommandHandler(options: UseSlashCommandHandlerOptions) {
 interface HomePageProps {
   onNewThread: () => void;
   onRewindThread: (threadId: string) => void;
+  onOpenConfig: () => void;
 }
 
-const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
+const HomePage = ({ onNewThread, onRewindThread, onOpenConfig }: HomePageProps) => {
   const { slashIndex, cmdOutput, composerText, handleSubmit } =
-    useSlashCommandHandler({ onNewThread, onRewindThread });
-
-  const bigTitle = React.useMemo(
-    () =>
-      gradientText(
-        figlet.textSync("onionCode", {
-          font: "Doom",
-          horizontalLayout: "fitted",
-        }),
-        T.figletFrom,
-        T.figletTo,
-      ),
-    [],
-  );
+    useSlashCommandHandler({ onNewThread, onRewindThread, onOpenConfig });
 
   return (
     <Box flexDirection="column">
-      {/* figlet 大标题 */}
-      <Box marginBottom={2} marginTop={1}>
-        <Text>{bigTitle}</Text>
+      {/* OpenCode 风格首页大标题 */}
+      <Box marginBottom={1} marginTop={1}>
+        <BigText
+          text="onioncode"
+          font="block"
+          colors={T.titleGradient}
+          lineHeight={2}
+          space={true}
+          letterSpacing={0}
+        />
       </Box>
 
       {/* 命令输出区 */}
@@ -428,7 +395,7 @@ const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={T.cancel}>{"  esc 中断"}</Text>
+                <Text color={T.textMuted}>{"  esc 中断"}</Text>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
@@ -443,11 +410,12 @@ const HomePage = ({ onNewThread, onRewindThread }: HomePageProps) => {
 interface ComposerProps {
   onNewThread: () => void;
   onRewindThread: (threadId: string) => void;
+  onOpenConfig: () => void;
 }
 
-const Composer = ({ onNewThread, onRewindThread }: ComposerProps) => {
+const Composer = ({ onNewThread, onRewindThread, onOpenConfig }: ComposerProps) => {
   const { slashIndex, cmdOutput, composerText, handleSubmit } =
-    useSlashCommandHandler({ onNewThread, onRewindThread });
+    useSlashCommandHandler({ onNewThread, onRewindThread, onOpenConfig });
 
   return (
     <Box flexDirection="column" marginTop={2}>
@@ -483,7 +451,7 @@ const Composer = ({ onNewThread, onRewindThread }: ComposerProps) => {
             />
             <AuiIf condition={(s) => s.thread.isRunning}>
               <ComposerPrimitive.Cancel>
-                <Text color={T.cancel}>{"  esc 中断"}</Text>
+                <Text color={T.textMuted}>{"  esc 中断"}</Text>
               </ComposerPrimitive.Cancel>
             </AuiIf>
           </Box>
@@ -498,13 +466,14 @@ const Composer = ({ onNewThread, onRewindThread }: ComposerProps) => {
 interface ThreadProps {
   onNewThread: () => void;
   onRewindThread: (threadId: string) => void;
+  onOpenConfig: () => void;
 }
 
-export const Thread = ({ onNewThread, onRewindThread }: ThreadProps) => (
+export const Thread = ({ onNewThread, onRewindThread, onOpenConfig }: ThreadProps) => (
   <ThreadPrimitive.Root flexDirection="column">
     {/* 空状态：OpenCode 风格首页 */}
     <AuiIf condition={(s) => s.thread.isEmpty}>
-      <HomePage onNewThread={onNewThread} onRewindThread={onRewindThread} />
+      <HomePage onNewThread={onNewThread} onRewindThread={onRewindThread} onOpenConfig={onOpenConfig} />
     </AuiIf>
 
     {/* 消息列表 */}
@@ -517,7 +486,7 @@ export const Thread = ({ onNewThread, onRewindThread }: ThreadProps) => (
 
     {/* 输入区域：空状态由 HomePage 内嵌，有消息后用 Composer */}
     <AuiIf condition={(s) => !s.thread.isEmpty}>
-      <Composer onNewThread={onNewThread} onRewindThread={onRewindThread} />
+      <Composer onNewThread={onNewThread} onRewindThread={onRewindThread} onOpenConfig={onOpenConfig} />
     </AuiIf>
   </ThreadPrimitive.Root>
 );

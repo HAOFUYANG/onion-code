@@ -1,11 +1,11 @@
 import chalk from "chalk";
-import { openConfigDialog } from "./config.js";
 
 export interface SlashCommandContext {
   newThread: () => void;
   showHelp: () => void;
   showSessions: () => void;
   rewindThread: (threadId: string) => void;
+  openConfig: () => void;
 }
 
 export interface SlashCommand {
@@ -23,7 +23,7 @@ export const slashCommands: SlashCommand[] = [
     name: "config",
     aliases: ["conf"],
     description: "打开配置中心",
-    handler: async () => openConfigDialog(),
+    handler: async (ctx) => ctx.openConfig(),
   },
   {
     name: "rewind",

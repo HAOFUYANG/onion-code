@@ -2,7 +2,7 @@ import React from "react";
 import { render } from "ink";
 import { Command } from "commander";
 import { runAgentStream } from "./agent.js";
-import { App } from "./ui/App.js";
+import { App } from "../ink/App.js";
 import { splashScreen, assistantPrefix, userEcho, status } from "./style.js";
 import pkg from "../../package.json" with { type: "json" };
 
