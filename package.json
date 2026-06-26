@@ -33,6 +33,8 @@
     "figlet": "^1.11.0",
     "inquirer": "^14.0.2",
     "langchain": "^1.4.4",
+    "markdansi": "^0.3.1",
+    "ora": "^9.4.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

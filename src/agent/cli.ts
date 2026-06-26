@@ -18,6 +18,8 @@ import {
   renderSessionsTable,
   threadExists,
 } from "./sessions.js";
+import ora from "ora";
+import { createMarkdownStreamer, render as renderMarkdown } from "markdansi";
 import pkg from "../../package.json" with { type: "json" };
 
 const program = new Command();
@@ -72,10 +74,19 @@ program
     const input = message.join(" ");
     process.stdout.write(userEcho(input));
     process.stdout.write(assistantPrefix());
+    const spinner = ora({ text: "思考中...", indent: 2 }).start();
     try {
-      await runAgentStream(input, (token) => process.stdout.write(token));
-      process.stdout.write("\n");
+      let fullText = "";
+      await runAgentStream(input, (token) => {
+        if (spinner.isSpinning) spinner.stop();
+        fullText += token;
+      });
+      const rendered = renderMarkdown(fullText, {
+        width: process.stdout.columns ?? 80,
+      });
+      process.stdout.write(rendered + "\n");
     } catch (err) {
+      if (spinner.isSpinning) spinner.stop();
       process.stdout.write("\n");
       console.error(status.error(formatError(err as Error)) + "\n");
       process.exit(1);
@@ -140,32 +151,51 @@ async function startInteractiveChat() {
     // 监听 ESC 键（ASCII 27 = 0x1b）
     stdin.resume();
     if (stdin.isTTY) stdin.setRawMode(true);
+
+    const spinner = ora({ text: "思考中...", indent: 2 }).start();
+
     const onData = (data: Buffer) => {
       if (data[0] === 0x1b && !abortController.signal.aborted) {
         abortController.abort();
+        spinner.stop();
         process.stdout.write(status.stopped);
       }
     };
     stdin.on("data", onData);
 
     try {
-      process.stdout.write(assistantPrefix());
       const startMs = Date.now();
+
+      // markdansi 流式渲染器：逐块输出已完成的 Markdown 段落
+      const termWidth = process.stdout.columns ?? 80;
+      let streamer = createMarkdownStreamer({
+        render: (md) => renderMarkdown(md, { width: termWidth }),
+        spacing: "single",
+      });
+
       await runAgentStream(
         userInput,
         (token: string) => {
           if (firstToken) {
-            // 首个 token：清除当前行的思考指示器（回退到行首重写）
-            process.stdout.write("\r\x1b[K");
+            // 首个 token：停 spinner，写助手前缀
+            spinner.stop();
             process.stdout.write(assistantPrefix().trimEnd());
             firstToken = false;
           }
-          process.stdout.write(token);
+          const chunk = streamer.push(token);
+          if (chunk) process.stdout.write(chunk);
         },
         threadId,
         abortController.signal,
         (toolName: string, args: Record<string, any>) => {
-          // 工具调用日志：作为流的一部分输出，不打断流式
+          // 工具调用前 flush streamer 残留内容，然后重建
+          const tail = streamer.finish();
+          if (tail) process.stdout.write(tail);
+          streamer = createMarkdownStreamer({
+            render: (md) => renderMarkdown(md, { width: termWidth }),
+            spacing: "single",
+          });
+
           const detail =
             args.command ??
             args.code ??
@@ -185,13 +215,17 @@ async function startInteractiveChat() {
       );
       if (firstToken) {
         // 无 token 输出（空响应或被中断）
-        process.stdout.write("\r\x1b[K");
+        spinner.stop();
         firstToken = false;
       }
+      // flush streamer 最后残留的 Markdown 块
+      const finalTail = streamer.finish();
+      if (finalTail) process.stdout.write(finalTail);
       lastResponseMs = Date.now() - startMs;
       messageCount++;
       process.stdout.write("\n\n");
     } finally {
+      if (spinner.isSpinning) spinner.stop();
       stdin.removeListener("data", onData);
       if (stdin.isTTY) stdin.setRawMode(wasRaw);
     }
