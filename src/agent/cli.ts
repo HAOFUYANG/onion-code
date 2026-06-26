@@ -130,15 +130,28 @@ async function startInteractiveChat() {
       );
     },
     showHelp: () => {
-      console.log(`\n  ${chalk.dim("可用命令")}`);
+      const terminalWidth = process.stdout.columns || 80;
+      const divider = chalk.hex("#7C3AED")(
+        "─".repeat(Math.min(terminalWidth - 4, 36)),
+      );
+      console.log(
+        `\n  ${chalk.hex("#C084FC")("▸")} ${chalk.bold.white("可用命令")}  ${chalk.dim(`${slashCommands.length} 项`)}\n${divider}`,
+      );
       for (const command of slashCommands) {
-        const name = `/${command.name}`;
-        const padding = " ".repeat(Math.max(0, 14 - name.length));
+        const icon = command.icon ? `${command.icon} ` : "";
+        const name = `/${command.name}`.padEnd(14);
+        const aliasInfo = command.aliases?.length
+          ? chalk.dim(`  (${command.aliases.map((a) => `/${a}`).join(", ")})`)
+          : "";
         console.log(
-          `    ${chalk.cyan(name)}${padding}${chalk.dim(command.description)}`,
+          `    ${icon}${chalk.cyan(name)}${chalk.dim(command.description)}${aliasInfo}`,
         );
       }
-      console.log("");
+      console.log(
+        chalk.dim(
+          `\n  输入 ${chalk.cyan("/")} 查看命令面板，${chalk.cyan("↑↓")} 导航，${chalk.cyan("enter")} 确认\n`,
+        ),
+      );
     },
   };
 

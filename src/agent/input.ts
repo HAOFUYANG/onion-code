@@ -1,5 +1,7 @@
 import * as readline from "node:readline";
+import stringWidth from "string-width";
 import chalk from "chalk";
+import { InputBuffer } from "./InputBuffer.js";
 import {
   brand,
   inputBorder,
@@ -17,16 +19,7 @@ export type UserInputResult =
   | { type: "command"; command: SlashCommand; args?: string }
   | { type: "exit" };
 
-interface InputState {
-  buffer: string;
-  selectedIndex: number;
-  slashDismissed: boolean;
-  renderedLines: number;
-  /** 上一次渲染时面板是否可见，用于判断是否需要全量重绘 */
-  panelVisible: boolean;
-  /** 自定义 █ 闪烁光标是否可见 */
-  cursorOn: boolean;
-}
+// ── 非 TTY 回退 ─────────────────────────────────────────
 
 function fallbackPrompt(): Promise<UserInputResult> {
   const rl = readline.createInterface({
@@ -55,18 +48,12 @@ function fallbackPrompt(): Promise<UserInputResult> {
   });
 }
 
-function getSuggestions(state: InputState): SlashCommand[] {
-  if (!state.buffer.startsWith("/") || state.slashDismissed) return [];
-  return matchSlashCommands(state.buffer);
-}
+// ── Slash 面板渲染 ──────────────────────────────────────
 
-function visibleLength(value: string): number {
-  return value.replace(/\u001b\[[0-9;]*m/g, "").length;
-}
-
-function padVisible(value: string, width: number): string {
-  const diff = width - visibleLength(value);
-  return diff > 0 ? `${value}${" ".repeat(diff)}` : value;
+function getSuggestions(buffer: InputBuffer): SlashCommand[] {
+  const text = buffer.text;
+  if (!text.startsWith("/")) return [];
+  return matchSlashCommands(text);
 }
 
 function renderSlashPanel(
@@ -85,115 +72,63 @@ function renderSlashPanel(
     ...visibleSuggestions.map((c) => c.name.length + 1),
   );
   const cmdWidth = Math.max(maxCmdLen, 8);
-  const descMaxWidth = Math.max(20, terminalWidth - cmdWidth - 8);
+  const descMaxWidth = Math.max(20, terminalWidth - cmdWidth - 12);
 
+  // ── 标题行 ──
+  const header = `  ${chalk.hex("#C084FC")("▸")} ${chalk.bold.white("命令")}  ${chalk.dim(`${visibleSuggestions.length} 项可用`)}`;
+  const divider = `  ${chalk.hex("#7C3AED")("─".repeat(Math.min(terminalWidth - 4, 40)))}`;
+
+  // ── 命令行 ──
   const rows = visibleSuggestions.map((cmd, index) => {
     const selected = index === selectedIndex;
     const indicator = selected ? chalk.magenta("▸") : " ";
-    const cmdText = padVisible(`/${cmd.name}`, cmdWidth);
+    const icon = cmd.icon ? `${cmd.icon} ` : "";
+    const paddedCmd = `/${cmd.name}`.padEnd(cmdWidth);
+
+    // 选中的行：高亮背景感
+    const cmdText = selected
+      ? chalk.bold.cyan(paddedCmd)
+      : chalk.dim(paddedCmd);
+
     const desc =
       cmd.description.length > descMaxWidth
         ? `${cmd.description.slice(0, Math.max(0, descMaxWidth - 1))}…`
         : cmd.description;
 
+    // 别名提示
+    const aliasHint = cmd.aliases?.length
+      ? chalk.dim(`  (${cmd.aliases.map((a) => `/${a}`).join(", ")})`)
+      : "";
+
     if (selected) {
-      return `  ${indicator} ${chalk.bold.cyan(cmdText)} ${chalk.dim(desc)}`;
+      return `  ${indicator} ${icon}${cmdText}  ${chalk.white(desc)}${aliasHint}`;
     }
-    return `  ${indicator} ${chalk.dim(cmdText)} ${chalk.dim(desc)}`;
+    return `  ${indicator} ${icon}${cmdText}  ${chalk.dim(desc)}${aliasHint}`;
   });
 
-  const footer = `  ${chalk.dim("tab 补全  ↑↓ 选择  enter 执行  esc 关闭")}`;
-  return [...rows, footer].join("\n");
+  // ── 页脚 ──
+  const footer = [
+    `  ${chalk.hex("#7C3AED")("─".repeat(Math.min(terminalWidth - 4, 40)))}`,
+    `  ${chalk.hex("#C084FC")("tab")} ${chalk.dim("补全")}  ${chalk.hex("#C084FC")("↑↓")} ${chalk.dim("选择")}  ${chalk.hex("#C084FC")("enter")} ${chalk.dim("执行")}  ${chalk.hex("#C084FC")("esc")} ${chalk.dim("关闭")}`,
+  ].join("\n");
+
+  return [header, divider, ...rows, footer].join("\n");
 }
 
-function clearPreviousRender(lines: number): void {
-  if (lines <= 0) return;
-  readline.moveCursor(process.stdout, 0, -(lines - 1));
-  readline.cursorTo(process.stdout, 0);
-  readline.clearScreenDown(process.stdout);
-}
+// ── 输入控制器 ──────────────────────────────────────────
 
-/**
- * 渲染输入区域。
- *
- * 光标策略 —— 像前端 input 组件一样：
- * - 自定义 █ 闪烁光标：用 chalk.inverse(" ") 渲染反色块字符，定时器控制显隐。
- * - 终端原生光标已隐藏（\x1b[?25l），视觉光标完全由 █ 字符接管。
- * - 正常打字走「快速路径」：只 clearLine + 重写本行。
- * - 面板出现/消失走「全量重绘」：先预留空白行，写完边线+状态后 \x1b[NA 回到空白行写入输入内容。
- */
-function render(state: InputState, ctx?: InputContext): void {
-  const suggestions = getSuggestions(state);
-  const shouldShowPanel =
-    suggestions.length > 0 ||
-    (state.buffer.startsWith("/") && !state.slashDismissed);
-
-  const prefix = `  ${inputBorder} ${brand.prompt}`;
-
-  // 自定义闪烁光标：反色空格模拟 █ 块状光标
-  const cursorChar = state.cursorOn ? chalk.inverse(" ") : " ";
-  const content = state.buffer
-    ? state.buffer + cursorChar
-    : cursorChar + chalk.dim("输入消息，或 / 查看命令...");
-
-  // ── 快速路径：只需更新输入行内容 ──
-  const layoutChanged = shouldShowPanel !== state.panelVisible;
-  if (state.renderedLines > 0 && !shouldShowPanel && !layoutChanged) {
-    readline.cursorTo(process.stdout, 0);
-    readline.clearLine(process.stdout, 0);
-    process.stdout.write(`${prefix}${content}`);
-    return;
-  }
-
-  // ── 全量重绘：面板出现/消失/首次渲染 ──
-  if (state.renderedLines > 0) {
-    // 光标在输入行上 → 先下移到渲染块末尾
-    readline.moveCursor(process.stdout, 0, 1 + (ctx ? 1 : 0));
-    clearPreviousRender(state.renderedLines);
-  }
-
-  // 1. 面板（输入行上方）
-  let panelLines = 0;
-  if (shouldShowPanel) {
-    const panelStr = renderSlashPanel(suggestions, state.selectedIndex);
-    process.stdout.write(`\r${panelStr}\n`);
-    panelLines = panelStr.split("\n").length;
-  }
-
-  // 2. 预留输入行的空白行
-  process.stdout.write(`\n`);
-
-  // 3. 边线（输入行下方）
-  process.stdout.write(`\r  ${inputBorder}`);
-
-  // 4. 状态行（边线下方）
-  if (ctx) {
-    process.stdout.write(`\n\r    ${formatInputStatus(ctx)}`);
-  }
-
-  // 记录行数
-  state.renderedLines = panelLines + 1 + 1 + (ctx ? 1 : 0);
-  state.panelVisible = shouldShowPanel;
-
-  // 5. 回到预留的空白行，写入输入内容
-  //    状态 + 边线 = 1 或 2 行，\x1b[NA 向上跳 N 行
-  const upLines = 1 + (ctx ? 1 : 0);
-  process.stdout.write(`\x1b[${upLines}A`);
-  process.stdout.write(`\r${prefix}${content}`);
-}
-
-function normalizeSelection(state: InputState): void {
-  const suggestions = getSuggestions(state);
-  if (suggestions.length === 0) {
-    state.selectedIndex = 0;
-    return;
-  }
-  if (state.selectedIndex >= suggestions.length) {
-    state.selectedIndex = suggestions.length - 1;
-  }
-  if (state.selectedIndex < 0) {
-    state.selectedIndex = 0;
-  }
+interface InputControllerState {
+  buffer: InputBuffer;
+  selectedIndex: number;
+  slashDismissed: boolean;
+  cursorOn: boolean;
+  /** 面板上一次渲染时的行数 */
+  prevPanelLines: number;
+  /** 上一次渲染总行数 */
+  renderedLines: number;
+  /** 合并连续重绘 */
+  redrawScheduled: boolean;
+  ctx?: InputContext;
 }
 
 export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
@@ -207,140 +142,314 @@ export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
 
   // 隐藏终端原生光标，使用自定义 █ 闪烁光标
   process.stdout.write("\x1b[?25l");
+  // 确保从干净行开始，不叠加在上次回声/AI 输出之上
+  process.stdout.write("\n");
 
-  const state: InputState = {
-    buffer: "",
+  const state: InputControllerState = {
+    buffer: new InputBuffer(),
     selectedIndex: 0,
     slashDismissed: false,
-    renderedLines: 0,
-    panelVisible: false,
     cursorOn: true,
+    prevPanelLines: 0,
+    renderedLines: 0,
+    redrawScheduled: false,
+    ctx,
   };
 
-  // 光标闪烁定时器：约 530ms 切换一次，模拟输入框光标动画
+  // 光标闪烁定时器：530ms 切换一次
   const blinkInterval = setInterval(() => {
     state.cursorOn = !state.cursorOn;
-    render(state, ctx);
+    scheduleRedraw(state);
   }, 530);
 
-  render(state, ctx);
+  redraw(state);
 
   return new Promise((resolve) => {
-    const cleanup = () => {
-      clearInterval(blinkInterval);
+    const onKeypress = makeKeypressHandler(state, (result) => {
+      // 先移除监听器防止泄漏到下一次 readUserInput 调用
       process.stdin.off("keypress", onKeypress);
-      if (process.stdin.isTTY) process.stdin.setRawMode(false);
-      // 恢复终端原生光标
-      process.stdout.write("\x1b[?25h");
-      process.stdout.write("\n");
-    };
-
-    const finish = (result: UserInputResult) => {
-      // 光标在输入行 buffer 末尾，先移到渲染块底部再清除
-      if (state.renderedLines > 0) {
-        const linesBelow = 1 + (ctx ? 1 : 0);
-        // 如果 buffer 为空，光标在 placeholder 位置，需要先回到 buffer 末尾
-        // 但 finish 时不需要精确位置，只需下移到底部
-        readline.moveCursor(process.stdout, 0, linesBelow);
-        clearPreviousRender(state.renderedLines);
-      }
-      if (state.buffer.trim()) {
-        process.stdout.write(
-          `  ${chalk.magenta("❯")} ${chalk.dim(state.buffer)}\n`,
-        );
-      }
-      cleanup();
+      finishInput(state, result, blinkInterval);
       resolve(result);
-    };
-
-    const onKeypress = (str: string, key: readline.Key) => {
-      if (key.ctrl && key.name === "c") {
-        finish({ type: "exit" });
-        return;
-      }
-
-      if (key.name === "return" || key.name === "enter") {
-        const trimmed = state.buffer.trim();
-        if (!trimmed) {
-          state.buffer = "";
-          render(state, ctx);
-          return;
-        }
-        if (trimmed.toLowerCase() === "exit") {
-          finish({ type: "exit" });
-          return;
-        }
-
-        const suggestions = getSuggestions(state);
-        if (state.buffer.startsWith("/") && suggestions.length > 0) {
-          // 解析命令名后面的参数（如 /rewind <thread_id>）
-          const parts = state.buffer.trim().split(/\s+/);
-          const args = parts.slice(1).join(" ") || undefined;
-          finish({
-            type: "command",
-            command: suggestions[state.selectedIndex],
-            args,
-          });
-          return;
-        }
-
-        finish({ type: "message", text: state.buffer });
-        return;
-      }
-
-      if (key.name === "escape") {
-        if (state.buffer.startsWith("/") && !state.slashDismissed) {
-          state.slashDismissed = true;
-          render(state, ctx);
-        }
-        return;
-      }
-
-      if (key.name === "backspace") {
-        state.buffer = state.buffer.slice(0, -1);
-        state.slashDismissed = false;
-        normalizeSelection(state);
-        render(state, ctx);
-        return;
-      }
-
-      const suggestions = getSuggestions(state);
-      if (key.name === "up" && suggestions.length > 0) {
-        state.selectedIndex =
-          (state.selectedIndex - 1 + suggestions.length) % suggestions.length;
-        render(state, ctx);
-        return;
-      }
-
-      if (key.name === "down" && suggestions.length > 0) {
-        state.selectedIndex = (state.selectedIndex + 1) % suggestions.length;
-        render(state, ctx);
-        return;
-      }
-
-      if (key.name === "tab" && suggestions.length > 0) {
-        state.buffer = formatSlashCommand(suggestions[state.selectedIndex]);
-        state.slashDismissed = false;
-        render(state, ctx);
-        return;
-      }
-
-      if (key.ctrl && key.name === "u") {
-        state.buffer = "";
-        state.selectedIndex = 0;
-        state.slashDismissed = false;
-        render(state, ctx);
-        return;
-      }
-
-      if (str && !key.ctrl && !key.meta && str >= " ") {
-        state.buffer += str;
-        state.slashDismissed = false;
-        normalizeSelection(state);
-        render(state, ctx);
-      }
-    };
+    });
 
     process.stdin.on("keypress", onKeypress);
+
+    // 兜底清理（Ctrl+C / process.exit 等）
+    const onExit = () => {
+      clearInterval(blinkInterval);
+      process.stdin.off("keypress", onKeypress);
+      process.stdout.write("\x1b[?25h");
+    };
+    process.once("exit", onExit);
   });
+}
+
+// ── 重绘调度 ────────────────────────────────────────────
+
+function scheduleRedraw(state: InputControllerState): void {
+  if (state.redrawScheduled) return;
+  state.redrawScheduled = true;
+  queueMicrotask(() => {
+    state.redrawScheduled = false;
+    redraw(state);
+  });
+}
+
+// ── 核心重绘 ────────────────────────────────────────────
+//
+// 重绘策略（对齐 InputController 参考实现的 clearLine + cursorTo 模式）：
+// 1. 每次 redraw 时，光标在上次渲染的输入行上
+// 2. 先移到渲染块顶部，清除所有旧行
+// 3. 逐行写入新内容
+// 4. 光标归位到输入行的正确列位置
+
+const PREFIX = `  ${inputBorder} ${brand.prompt}`;
+const PREFIX_WIDTH = stringWidth(PREFIX);
+
+function redraw(state: InputControllerState): void {
+  const stdout = process.stdout;
+  if (!stdout.isTTY) return;
+
+  const suggestions = state.slashDismissed ? [] : getSuggestions(state.buffer);
+  const shouldShowPanel = suggestions.length > 0;
+
+  // ── 构建输出行 ──
+  const lines: string[] = [];
+
+  if (shouldShowPanel) {
+    const panel = renderSlashPanel(suggestions, state.selectedIndex);
+    lines.push(...panel.split("\n"));
+  }
+
+  const cursorChar = state.cursorOn ? chalk.inverse(" ") : " ";
+  const bufferText = state.buffer.text;
+  const inputContent = bufferText
+    ? bufferText + cursorChar
+    : cursorChar + chalk.dim("输入消息，或 / 查看命令...");
+  lines.push(`${PREFIX}${inputContent}`);
+  lines.push(`  ${inputBorder}`);
+  if (state.ctx) {
+    lines.push(`    ${formatInputStatus(state.ctx)}`);
+  }
+
+  // ── 清除旧渲染 ──
+  // 光标当前在上次渲染的输入行上（上次 redraw 末尾归位的结果）
+  // 需要上移到面板顶部，然后 clearScreenDown
+  readline.cursorTo(stdout, 0);
+  if (state.prevPanelLines > 0) {
+    readline.moveCursor(stdout, 0, -state.prevPanelLines);
+  }
+  if (state.renderedLines > 0) {
+    readline.clearScreenDown(stdout);
+  }
+
+  // ── 逐行写入 ──
+  for (const line of lines) {
+    stdout.write(line + "\n");
+    readline.cursorTo(stdout, 0);
+  }
+
+  // ── 记录状态 ──
+  state.renderedLines = lines.length;
+  state.prevPanelLines = shouldShowPanel
+    ? lines.length - 2 - (state.ctx ? 1 : 0) // total - input - border - status?
+    : 0;
+
+  // ── 光标归位：回到输入行的正确列 ──
+  // 循环结束后光标在最后一行之下（col 0），需要上移到输入行
+  // fromBottom = 边线(1) + 状态(0|1) + 1(当前行在block下方)
+  const fromBottom = 2 + (state.ctx ? 1 : 0);
+  readline.moveCursor(stdout, 0, -fromBottom);
+  const cursorColumn =
+    PREFIX_WIDTH + (bufferText ? stringWidth(bufferText) : 0);
+  readline.cursorTo(stdout, cursorColumn);
+}
+
+// ── 选中值归一化 ────────────────────────────────────────
+
+function normalizeSelection(
+  state: InputControllerState,
+  suggestions: SlashCommand[],
+): void {
+  if (suggestions.length === 0) {
+    state.selectedIndex = 0;
+    return;
+  }
+  if (state.selectedIndex >= suggestions.length) {
+    state.selectedIndex = suggestions.length - 1;
+  }
+  if (state.selectedIndex < 0) {
+    state.selectedIndex = 0;
+  }
+}
+
+// ── 按键处理器工厂 ──────────────────────────────────────
+
+function makeKeypressHandler(
+  state: InputControllerState,
+  onFinish: (result: UserInputResult) => void,
+): (str: string, key: readline.Key) => void {
+  return (str: string, key: readline.Key) => {
+    if (key.ctrl && key.name === "c") {
+      onFinish({ type: "exit" });
+      return;
+    }
+
+    if (key.name === "return" || key.name === "enter") {
+      const text = state.buffer.text.trim();
+      if (!text) {
+        state.buffer.clear();
+        scheduleRedraw(state);
+        return;
+      }
+      if (text.toLowerCase() === "exit") {
+        onFinish({ type: "exit" });
+        return;
+      }
+
+      const suggestions = state.slashDismissed
+        ? []
+        : getSuggestions(state.buffer);
+      if (state.buffer.text.startsWith("/") && suggestions.length > 0) {
+        const parts = state.buffer.text.trim().split(/\s+/);
+        const args = parts.slice(1).join(" ") || undefined;
+        onFinish({
+          type: "command",
+          command: suggestions[state.selectedIndex],
+          args,
+        });
+        return;
+      }
+
+      onFinish({ type: "message", text: state.buffer.text });
+      return;
+    }
+
+    if (key.name === "escape") {
+      if (state.buffer.text.startsWith("/") && !state.slashDismissed) {
+        state.slashDismissed = true;
+        scheduleRedraw(state);
+      }
+      return;
+    }
+
+    if (key.name === "backspace") {
+      state.buffer.backspace();
+      state.slashDismissed = false;
+      normalizeSelection(state, getSuggestions(state.buffer));
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "delete") {
+      state.buffer.deleteForward();
+      state.slashDismissed = false;
+      normalizeSelection(state, getSuggestions(state.buffer));
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "left") {
+      state.buffer.moveLeft();
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "right") {
+      state.buffer.moveRight();
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "home") {
+      state.buffer.moveHome();
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "end") {
+      state.buffer.moveEnd();
+      scheduleRedraw(state);
+      return;
+    }
+
+    const suggestions = state.slashDismissed
+      ? []
+      : getSuggestions(state.buffer);
+
+    if (key.name === "up" && suggestions.length > 0) {
+      state.selectedIndex =
+        (state.selectedIndex - 1 + suggestions.length) % suggestions.length;
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "down" && suggestions.length > 0) {
+      state.selectedIndex = (state.selectedIndex + 1) % suggestions.length;
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.name === "tab" && suggestions.length > 0) {
+      state.buffer.clear();
+      const cmdText = formatSlashCommand(suggestions[state.selectedIndex]);
+      state.buffer.insert(cmdText);
+      state.slashDismissed = false;
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (key.ctrl && key.name === "u") {
+      state.buffer.clear();
+      state.selectedIndex = 0;
+      state.slashDismissed = false;
+      scheduleRedraw(state);
+      return;
+    }
+
+    if (str && !key.ctrl && !key.meta && str >= " ") {
+      state.buffer.insert(str);
+      state.slashDismissed = false;
+      normalizeSelection(state, getSuggestions(state.buffer));
+      scheduleRedraw(state);
+    }
+  };
+}
+
+// ── 清理 + 输出回显 ────────────────────────────────────
+//
+// 光标在输入行上；从输入行（或面板顶部）开始清屏，再写回声。
+
+function finishInput(
+  state: InputControllerState,
+  result: UserInputResult,
+  blinkInterval: NodeJS.Timeout,
+): void {
+  clearInterval(blinkInterval);
+
+  if (process.stdin.isTTY) {
+    try {
+      process.stdin.setRawMode(false);
+    } catch {
+      // ignore
+    }
+  }
+
+  // 恢复终端原生光标
+  process.stdout.write("\x1b[?25h");
+
+  // 光标在输入行上（redraw 末尾归位的结果）
+  // 从输入行列 0 开始（有面板则上移到面板顶部），清屏清除整个输入区域
+  readline.cursorTo(process.stdout, 0);
+  if (state.prevPanelLines > 0) {
+    readline.moveCursor(process.stdout, 0, -state.prevPanelLines);
+  }
+  readline.clearScreenDown(process.stdout);
+
+  // 回显用户输入
+  if (result.type === "message" && result.text.trim()) {
+    process.stdout.write(`  ${chalk.magenta("❯")} ${chalk.dim(result.text)}\n`);
+  } else {
+    process.stdout.write("\n");
+  }
 }

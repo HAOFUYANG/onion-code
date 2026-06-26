@@ -10,6 +10,7 @@ export interface SlashCommandContext {
 
 export interface SlashCommand {
   name: string;
+  icon: string;
   aliases?: string[];
   description: string;
   handler: (
@@ -21,20 +22,20 @@ export interface SlashCommand {
 export const slashCommands: SlashCommand[] = [
   {
     name: "config",
+    icon: "⚙",
     aliases: ["conf"],
     description: "打开配置中心",
     handler: async () => openConfigDialog(),
   },
   {
     name: "rewind",
+    icon: "⏪",
     aliases: ["rw"],
     description: "恢复某条聊天记录（用法：/rewind <thread_id>）",
     handler: (ctx, args) => {
       if (!args?.trim()) {
         console.log(
-          chalk.dim(
-            "\n  用法：/rewind <thread_id>  先用 /sessions 查看 ID\n",
-          ),
+          chalk.dim("\n  用法：/rewind <thread_id>  先用 /sessions 查看 ID\n"),
         );
         return;
       }
@@ -43,17 +44,20 @@ export const slashCommands: SlashCommand[] = [
   },
   {
     name: "sessions",
+    icon: "📋",
     aliases: ["sess"],
     description: "查看最近 20 条聊天记录",
     handler: (ctx) => ctx.showSessions(),
   },
   {
     name: "new",
+    icon: "✨",
     description: "新建会话",
     handler: (ctx) => ctx.newThread(),
   },
   {
     name: "theme",
+    icon: "🎨",
     description: "切换终端主题（即将支持）",
     handler: () => {
       console.log(
@@ -65,11 +69,13 @@ export const slashCommands: SlashCommand[] = [
   },
   {
     name: "help",
+    icon: "❓",
     description: "查看 slash 命令帮助",
     handler: (ctx) => ctx.showHelp(),
   },
   {
     name: "exit",
+    icon: "🚪",
     aliases: ["quit"],
     description: "退出程序",
     handler: () => "exit",
