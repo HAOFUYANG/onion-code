@@ -12,7 +12,7 @@ import {
   formatSlashCommand,
   matchSlashCommands,
   type SlashCommand,
-} from "./slash_commands.js";
+} from "./commands.js";
 
 export type UserInputResult =
   | { type: "message"; text: string }
@@ -168,6 +168,7 @@ export function readUserInput(ctx?: InputContext): Promise<UserInputResult> {
     const onKeypress = makeKeypressHandler(state, (result) => {
       // 先移除监听器防止泄漏到下一次 readUserInput 调用
       process.stdin.off("keypress", onKeypress);
+      process.off("exit", onExit);
       finishInput(state, result, blinkInterval);
       resolve(result);
     });

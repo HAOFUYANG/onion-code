@@ -1,6 +1,21 @@
-import { createAgent } from "langchain";
 import { ChatOpenAI } from "@langchain/openai";
 import { SqliteSaver } from "@langchain/langgraph-checkpoint-sqlite";
+import {
+  SystemMessage,
+  HumanMessage,
+  type BaseMessage,
+  type UsageMetadata,
+  isAIMessage,
+  ToolMessage,
+} from "@langchain/core/messages";
+import {
+  StateGraph,
+  Annotation,
+  START,
+  END,
+  messagesStateReducer,
+  type CompiledStateGraph,
+} from "@langchain/langgraph";
 import {
   searchTool,
   readFileTool,
@@ -17,8 +32,12 @@ import fs from "node:fs";
 import dotenv from "dotenv";
 import { fileURLToPath } from "node:url";
 import { getSkillText } from "./skills.js";
+import { compressMessages } from "./context.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// 以项目根目录（而非 cwd）为基准加载 .env
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 // ── TARS 风格 System Prompt ───────────────────────────────
 function buildSystemPrompt(): string {
@@ -56,9 +75,6 @@ You are onionCode — a highly capable AI assistant with the personality of TARS
   return `${personality}\n${getSkillText()}`;
 }
 
-// 以项目根目录（而非 cwd）为基准加载 .env
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-
 // ── SQLite 持久化（Checkpointer）────────────────────────────
 const checkpointDir = path.resolve(process.cwd(), ".data");
 fs.mkdirSync(checkpointDir, { recursive: true });
@@ -74,25 +90,237 @@ const model = new ChatOpenAI({
     baseURL: "https://api.deepseek.com/v1",
   },
   streaming: true,
+  modelKwargs: {
+    thinking: { type: "disabled" },
+  },
 });
 
-// ── Agent 创建 ────────────────────────────────────────────
-export const agent = createAgent({
-  model,
-  tools: [
-    searchTool,
-    readFileTool,
-    writeFileTool,
-    execTool,
-    runJsTool,
-    runPyTool,
-    webSearchTool,
-    webFetchTool,
-    loadSkillTool,
-  ],
-  systemPrompt: buildSystemPrompt(),
+// 工具列表 — 各 tool 输入 schema 不同，tsserver 联合类型签名不兼容
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const tools: any[] = [
+  searchTool,
+  readFileTool,
+  writeFileTool,
+  execTool,
+  runJsTool,
+  runPyTool,
+  webSearchTool,
+  webFetchTool,
+  loadSkillTool,
+];
+
+const modelWithTools = model.bindTools(tools as any);
+
+// ── State Schema ──────────────────────────────────────────
+const StateAnnotation = Annotation.Root({
+  /** 规范对话历史 — checkpointer 持久化，追加语义 */
+  messages: Annotation<BaseMessage[]>({
+    reducer: messagesStateReducer,
+    default: () => [],
+  }),
+  /** LLM 实际输入 — 供 preprocess 节点注入变换后的消息 */
+  llmInputMessages: Annotation<BaseMessage[]>({
+    reducer: (_prev, update) => messagesStateReducer([], update),
+    default: () => [],
+  }),
+  /** Context 压缩摘要 — CLI 侧压缩后写入，modelRequest 读取 */
+  contextSummary: Annotation<string | null>({
+    reducer: (_prev, update) => update,
+    default: () => null,
+  }),
+  /** Context 压缩次数 */
+  compressionCount: Annotation<number>({
+    reducer: (_prev, update) => update,
+    default: () => 0,
+  }),
+  /** 上次压缩时的消息边界索引（messages.slice 起点） */
+  lastCompressedIndex: Annotation<number>({
+    reducer: (_prev, update) => update,
+    default: () => 0,
+  }),
+});
+
+type AgentState = typeof StateAnnotation.State;
+
+const systemPrompt = buildSystemPrompt();
+
+// ── 辅助：取模型输入 messages ──────────────────────────────
+function getModelInputState(state: AgentState) {
+  const { messages, llmInputMessages, ...rest } = state;
+  if (llmInputMessages != null && llmInputMessages.length > 0) {
+    return { messages: llmInputMessages, ...rest };
+  }
+  return { messages, ...rest };
+}
+
+// ── model_request 节点 ────────────────────────────────────
+async function modelRequest(
+  state: AgentState,
+  config: any,
+): Promise<Partial<AgentState>> {
+  let inputMessages: BaseMessage[];
+
+  if (state.contextSummary != null && state.lastCompressedIndex > 0) {
+    // 压缩路径：摘要 + 从压缩边界开始的最近消息（含本轮用户输入）
+    inputMessages = [
+      new SystemMessage(systemPrompt),
+      new SystemMessage(`[上下文摘要]\n${state.contextSummary}`),
+      ...state.messages.slice(state.lastCompressedIndex),
+    ];
+  } else {
+    // 正常路径：llmInputMessages 优先（供未来 preprocess 使用），否则用 messages
+    const input = getModelInputState(state);
+    inputMessages = [
+      new SystemMessage(systemPrompt),
+      ...(input.messages ?? []),
+    ];
+  }
+
+  const response = await modelWithTools.invoke(inputMessages, config);
+  return { messages: [response], llmInputMessages: [] };
+}
+
+// ── shouldContinue 路由 ───────────────────────────────────
+function shouldContinue(state: AgentState): "tools" | typeof END {
+  const lastMessage = state.messages[state.messages.length - 1];
+  if (isAIMessage(lastMessage) && lastMessage.tool_calls?.length) {
+    return "tools";
+  }
+  return END;
+}
+
+// ── tools 节点 ────────────────────────────────────────────
+async function toolNode(
+  state: AgentState,
+  config: any,
+): Promise<Partial<AgentState>> {
+  const messages = state.messages;
+
+  // 去重：已执行的 tool_call
+  const executedIds = new Set(
+    messages
+      .filter((m) => m.getType() === "tool")
+      .map((m) => (m as ToolMessage).tool_call_id),
+  );
+
+  // 找最后一条带 tool_calls 的 AI 消息
+  let aiMessage: BaseMessage | undefined;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (isAIMessage(messages[i])) {
+      aiMessage = messages[i];
+      break;
+    }
+  }
+
+  if (!aiMessage || !isAIMessage(aiMessage)) {
+    throw new Error("ToolNode 仅接受含 tool_calls 的 AIMessage 作为输入。");
+  }
+
+  const pendingCalls =
+    aiMessage.tool_calls?.filter(
+      (call) => call.id == null || !executedIds.has(call.id),
+    ) ?? [];
+
+  const outputs = await Promise.all(
+    pendingCalls.map(async (call) => {
+      const tool = tools.find((t) => t.name === call.name);
+      try {
+        if (!tool) {
+          throw new Error(`未找到工具 "${call.name}"。`);
+        }
+        const output = await tool.invoke(
+          { ...call, type: "tool_call" },
+          config,
+        );
+        const content =
+          typeof output === "string" ? output : JSON.stringify(output);
+        return new ToolMessage({
+          content,
+          tool_call_id: call.id ?? "",
+          name: call.name,
+        });
+      } catch (e: any) {
+        return new ToolMessage({
+          content: `执行失败: ${e.message}\n请修正后重试。`,
+          tool_call_id: call.id ?? "",
+          name: call.name,
+        });
+      }
+    }),
+  );
+
+  return { messages: outputs };
+}
+
+// ── 编译 Graph ────────────────────────────────────────────
+const workflow = new StateGraph(StateAnnotation)
+  .addNode("model_request", modelRequest)
+  .addNode("tools", toolNode)
+  .addEdge(START, "model_request")
+  .addConditionalEdges("model_request", shouldContinue, {
+    tools: "tools",
+    [END]: END,
+  })
+  .addEdge("tools", "model_request");
+
+export const agent: CompiledStateGraph<any, any, any> = workflow.compile({
   checkpointer,
 });
+
+// ── Context 压缩 ─────────────────────────────────────────
+export interface CompressResult {
+  compressed: boolean;
+  compressionCount: number;
+  keepRecent: number;
+  error?: string;
+}
+
+/**
+ * 压缩 Agent Context — 获取当前会话状态，将最近 6 条之外的消息压缩为摘要。
+ * 由 CLI 层在 token 使用率 >= 80% 时调用。
+ */
+export async function compressAgentContext(
+  threadId: string,
+  keepRecent = 6,
+): Promise<CompressResult> {
+  const config = { configurable: { thread_id: threadId } };
+
+  try {
+    const currentState = await agent.getState(config);
+
+    const messages = (currentState?.values?.messages ?? []) as BaseMessage[];
+    const prevSummary = (currentState?.values?.contextSummary ?? null) as
+      | string
+      | null;
+    const prevCount = (currentState?.values?.compressionCount ?? 0) as number;
+    const lastIdx = (currentState?.values?.lastCompressedIndex ?? 0) as number;
+    const newCount = prevCount + 1;
+
+    // 压缩从上次边界到最近 keepRecent 条之间的新增消息
+    const toCompress = messages.slice(lastIdx, messages.length - keepRecent);
+
+    if (toCompress.length === 0) {
+      return { compressed: false, compressionCount: prevCount, keepRecent };
+    }
+
+    const summary = await compressMessages(toCompress, prevSummary, model);
+
+    await agent.updateState(config, {
+      contextSummary: summary,
+      compressionCount: newCount,
+      lastCompressedIndex: messages.length - keepRecent,
+    });
+
+    return { compressed: true, compressionCount: newCount, keepRecent };
+  } catch (err) {
+    return {
+      compressed: false,
+      compressionCount: 0,
+      keepRecent,
+      error: (err as Error).message ?? String(err),
+    };
+  }
+}
 
 // ── Token 用量 ──────────────────────────────────────────
 export interface TokenUsage {
@@ -102,13 +330,7 @@ export interface TokenUsage {
 }
 
 /**
- * 以流式方式运行 agent，将 token 逐个回调给调用方
- * @param {string} userMessage - 当前用户输入（历史已由 checkpointer 自动续接）
- * @param {Function} onToken   - 每个 token 到来时的回调 (token: string) => void
- * @param {string} threadId    - 会话 ID，相同 ID 自动续上历史记录
- * @param {AbortSignal} [signal] - 可选的取消信号，可用于 ESC 中断
- * @param {Function} [onToolCall] - 工具调用回调 (toolName: string, args: Record<string, any>) => void
- * @returns {Promise<{ text: string; usage: TokenUsage | null }>}  完整 AI 回复 + token 用量
+ * 以流式方式运行 agent
  */
 export async function runAgentStream(
   userMessage: string,
@@ -117,31 +339,41 @@ export async function runAgentStream(
   signal?: AbortSignal,
   onToolCall?: (toolName: string, args: Record<string, any>) => void,
 ): Promise<{ text: string; usage: TokenUsage | null }> {
-  const config = {
-    configurable: { thread_id: threadId },
-    recursionLimit: 100,
-  };
+  const config = { configurable: { thread_id: threadId } };
 
   const stream = await agent.stream(
-    { messages: [{ role: "user", content: userMessage }] },
-    { ...config, streamMode: "messages" },
+    { messages: [new HumanMessage(userMessage)] },
+    { ...config, streamMode: "messages", signal },
   );
 
   let fullResponse = "";
   let usage: TokenUsage | null = null;
-  // 累积 tool_call_chunks，因为参数可能分多个 chunk 到达
   const toolCallAccumulator = new Map<string, { name: string; args: string }>();
 
   for await (const chunk of stream as any) {
     if (signal?.aborted) break;
 
     const message = chunk[0];
+    const metadata = chunk[1];
 
-    // 跳过非 AI 消息（tool 结果等），但迭代继续推进让 graph 完成
-    if (typeof message._getType !== "function" || message._getType() !== "ai")
-      continue;
+    // 只看 model_request 节点的输出
+    if (metadata?.langgraph_node !== "model_request") continue;
 
-    // AIMessageChunk 的 content 在 message.content 属性上
+    // 捕获 token 用量
+    const um = (message as any).usage_metadata as UsageMetadata | undefined;
+    if (um) {
+      const input = um.input_tokens ?? (um as any).inputTokens ?? 0;
+      const output = um.output_tokens ?? (um as any).outputTokens ?? 0;
+      const total = um.total_tokens ?? (um as any).totalTokens ?? 0;
+      if (input > 0 || output > 0 || total > 0) {
+        usage = {
+          inputTokens: input,
+          outputTokens: output,
+          totalTokens: total,
+        };
+      }
+    }
+
     const content: string =
       (message as any).content ?? (message as any).kwargs?.content ?? "";
     const toolCallChunks = (message as any).tool_call_chunks ?? [];
@@ -151,7 +383,7 @@ export async function runAgentStream(
       fullResponse += content;
     }
 
-    // 处理 tool_call chunks：累积工具名和参数
+    // 累积 tool_call chunks
     if (toolCallChunks.length > 0 && onToolCall) {
       for (const tc of toolCallChunks) {
         const index = tc.index ?? 0;
@@ -159,48 +391,26 @@ export async function runAgentStream(
         const name = tc.name ?? existing?.name ?? "";
         const args = (existing?.args ?? "") + (tc.args ?? "");
         toolCallAccumulator.set(String(index), { name, args });
-
-        // 当工具名和参数都完整时（通常 name 在第一个 chunk，args 逐步累积）
-        // 在这里不立即回调，等 tool 执行完成后由后续 chunk 触发
       }
     }
+  }
 
-    // 检测 tool 消息（工具执行完成），此时触发 onToolCall
-    if (
-      typeof message._getType === "function" &&
-      message._getType() === "tool"
-    ) {
-      if (onToolCall && toolCallAccumulator.size > 0) {
-        for (const [, { name, args }] of toolCallAccumulator) {
-          if (name) {
-            let parsedArgs: Record<string, any> = {};
-            try {
-              parsedArgs = args ? JSON.parse(args) : {};
-            } catch {
-              // args 可能不完整，跳过解析
-            }
-            onToolCall(name, parsedArgs);
-          }
+  // 流结束后触发 tool call 回调
+  if (onToolCall && toolCallAccumulator.size > 0) {
+    for (const [, { name, args }] of toolCallAccumulator) {
+      if (name) {
+        let parsedArgs: Record<string, any> = {};
+        try {
+          parsedArgs = args ? JSON.parse(args) : {};
+        } catch {
+          // args 可能不完整
         }
-        toolCallAccumulator.clear();
-      }
-    }
-
-    // 捕获 token 用量（LangChain >0.3 在末 chunk 的 usage_metadata 中返回）
-    const um = (message as any).usage_metadata;
-    if (um && typeof um === "object") {
-      const input = um.input_tokens ?? um.inputTokens ?? 0;
-      const output = um.output_tokens ?? um.outputTokens ?? 0;
-      const total = um.total_tokens ?? um.totalTokens ?? 0;
-      if (input > 0 || output > 0 || total > 0) {
-        usage = {
-          inputTokens: input,
-          outputTokens: output,
-          totalTokens: total,
-        };
+        onToolCall(name, parsedArgs);
       }
     }
   }
 
   return { text: fullResponse, usage };
 }
+
+export { model };

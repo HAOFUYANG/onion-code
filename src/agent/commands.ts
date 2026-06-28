@@ -6,6 +6,7 @@ export interface SlashCommandContext {
   showHelp: () => void;
   showSessions: () => void;
   rewindThread: (threadId: string) => void;
+  compressContext: () => void;
 }
 
 export interface SlashCommand {
@@ -79,6 +80,13 @@ export const slashCommands: SlashCommand[] = [
     aliases: ["quit"],
     description: "退出程序",
     handler: () => "exit",
+  },
+  {
+    name: "compact",
+    icon: "📦",
+    aliases: ["compress"],
+    description: "手动压缩当前会话上下文",
+    handler: (ctx) => ctx.compressContext(),
   },
 ];
 

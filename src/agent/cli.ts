@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import chalk from "chalk";
 import { Command } from "commander";
-import { runAgentStream } from "./agent.js";
+import { runAgentStream, compressAgentContext } from "./agent.js";
 import { readUserInput } from "./input.js";
-import { slashCommands, type SlashCommandContext } from "./slash_commands.js";
+import { slashCommands, type SlashCommandContext } from "./commands.js";
 import {
   status,
   splashScreen,
@@ -137,6 +137,36 @@ async function startInteractiveChat() {
         `\n  ${chalk.dim("⏪")} 已切换到历史会话 ${chalk.cyan(threadId)}\n`,
       );
     },
+    compressContext: async () => {
+      const compressSpinner = ora({
+        text: "正在压缩 Context...",
+        indent: 2,
+      }).start();
+
+      const result = await compressAgentContext(threadId);
+
+      compressSpinner.stop();
+
+      if (result.compressed) {
+        console.log(
+          `  ${chalk.hex("#10B981")("✓")}  ${chalk.green("Context 已压缩")} — 已保留最近 ${result.keepRecent} 条消息（${chalk.cyan("第" + result.compressionCount + "次")}\n`,
+        );
+
+        if (result.compressionCount >= 3) {
+          console.log(
+            `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("已压缩 3 次，强烈建议")} ${chalk.cyan("/new")} ${chalk.yellow("开启新会话")}\n`,
+          );
+        }
+      } else if (result.error) {
+        console.log(
+          `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 压缩失败")}: ${result.error}\n`,
+        );
+      } else {
+        console.log(
+          `  ${chalk.dim("ℹ")}  ${chalk.gray("无需压缩，当前消息量较少")}\n`,
+        );
+      }
+    },
     showHelp: () => {
       const terminalWidth = process.stdout.columns || 80;
       const divider = chalk.hex("#7C3AED")(
@@ -250,17 +280,36 @@ async function startInteractiveChat() {
       const tokenLine = renderTokenBar(usage, modelName);
       if (tokenLine) process.stdout.write(tokenLine + "\n");
 
-      // 上下文窗口接近上限时警告
+      // Context 压缩
       if (usage && usage.inputTokens > 0) {
         const maxTokens = getModelMaxTokens(modelName);
         const pct = usage.inputTokens / maxTokens;
         if (pct >= 0.8) {
-          const warning = [
-            `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 占用已达")} ${chalk.bold.yellow((pct * 100).toFixed(0) + "%")}`,
-            `  ${chalk.dim("  大模型接口限制接近上限，即将压缩 Context ，可能丢失信息")}`,
-            `  ${chalk.dim("  建议输入")} ${chalk.cyan("/new")} ${chalk.dim("命令开启新会话")}`,
-          ].join("\n");
-          process.stdout.write(warning + "\n");
+          const compressSpinner = ora({
+            text: "正在压缩 Context...",
+            indent: 2,
+          }).start();
+
+          const result = await compressAgentContext(threadId);
+
+          compressSpinner.stop();
+
+          if (result.compressed) {
+            process.stdout.write(
+              `  ${chalk.hex("#10B981")("✓")}  ${chalk.green("Context 已压缩")} — 已保留最近 ${result.keepRecent} 条消息（${chalk.cyan("第" + result.compressionCount + "次")}）\n`,
+            );
+
+            if (result.compressionCount >= 3) {
+              process.stdout.write(
+                `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("已压缩 3 次，强烈建议")} ${chalk.cyan("/new")} ${chalk.yellow("开启新会话")}\n`,
+              );
+            }
+          } else if (result.error) {
+            process.stdout.write(
+              `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 压缩失败，下次对话仍使用完整历史")}\n`,
+            );
+          }
+          // compressed=false 且无 error → 无需压缩（如 toCompress 为空）
         }
       }
 
