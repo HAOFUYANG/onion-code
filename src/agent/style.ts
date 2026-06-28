@@ -53,9 +53,7 @@ export function formatInputStatus(ctx: InputContext): string {
 
   parts.push(`${chalk.cyan("🤖")} ${chalk.dim(ctx.model)}`);
   parts.push(`${chalk.magenta("🧵")} ${chalk.dim(ctx.threadId)}`);
-  parts.push(
-    `${chalk.yellow("💬")} ${chalk.dim(`${ctx.messageCount} msgs`)}`,
-  );
+  parts.push(`${chalk.yellow("💬")} ${chalk.dim(`${ctx.messageCount} msgs`)}`);
   if (ctx.lastResponseMs !== null) {
     const secs = (ctx.lastResponseMs / 1000).toFixed(1);
     parts.push(`${chalk.green("⏱")} ${chalk.dim(`${secs}s`)}`);
@@ -70,7 +68,9 @@ export function formatInputStatus(ctx: InputContext): string {
  */
 export function userEcho(text: string): string {
   const lines = text.split("\n");
-  const indented = lines.map((l) => chalk.dim(l)).join(`\n  ${chalk.dim("❯")} `);
+  const indented = lines
+    .map((l) => chalk.dim(l))
+    .join(`\n  ${chalk.dim("❯")} `);
   return `\n  ${chalk.magenta("❯")} ${indented}\n`;
 }
 
@@ -83,7 +83,10 @@ export function assistantPrefix(): string {
 }
 
 // ── 工具调用日志（丰富配色，每个工具有独立图标）─────────────
-const TOOL_STYLES: Record<string, { icon: string; color: (s: string) => string }> = {
+const TOOL_STYLES: Record<
+  string,
+  { icon: string; color: (s: string) => string }
+> = {
   exec: { icon: "⚙", color: chalk.yellow },
   run_js: { icon: "⚡", color: chalk.green },
   run_py: { icon: "🐍", color: chalk.blue },
@@ -213,4 +216,81 @@ export function welcomeBanner(version: string): string {
   const title = chalk.bold.magenta("🧅 onionCode");
   const ver = chalk.dim(`v${version}`);
   return `\n  ${title} ${ver}\n  ${chalk.dim("─".repeat(40))}`;
+}
+
+// ── Token 用量展示 ──────────────────────────────────────
+
+/** 已知模型的上下文窗口大小 */
+const MODEL_CONTEXT_SIZES: Record<string, number> = {
+  "deepseek-v4-flash": 128_000,
+  "deepseek-v3": 128_000,
+  "deepseek-r1": 128_000,
+  "deepseek-chat": 128_000,
+  "deepseek-reasoner": 128_000,
+  "gpt-4o": 128_000,
+  "gpt-4o-mini": 128_000,
+  "gpt-4-turbo": 128_000,
+  "gpt-4": 8_192,
+  "gpt-4-32k": 32_768,
+  "gpt-3.5-turbo": 16_385,
+  "claude-3-opus": 200_000,
+  "claude-3-sonnet": 200_000,
+  "claude-3-haiku": 200_000,
+  "claude-3.5-sonnet": 200_000,
+};
+
+/** 根据模型名获取上下文窗口上限，找不到默认 128K */
+export function getModelMaxTokens(modelName: string): number {
+  const key = modelName.toLowerCase();
+  return MODEL_CONTEXT_SIZES[key] ?? 128_000;
+}
+
+/** 格式化 token 数为 K/M */
+function formatTokenCount(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "K";
+  return String(n);
+}
+
+/** 根据占比返回渐变色（绿→黄→红） */
+function getBarColor(pct: number): string {
+  if (pct > 0.8) return "#EF4444"; // red
+  if (pct > 0.5) return "#F59E0B"; // amber
+  if (pct > 0.3) return "#10B981"; // green
+  return "#06B6D4"; // cyan
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+/**
+ * 渲染 token 用量进度条
+ * @example
+ *   ⚡ 1.2K/128K (0.9%)  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+ */
+export function renderTokenBar(
+  usage: TokenUsage | null,
+  modelName: string,
+): string {
+  if (!usage || usage.inputTokens <= 0) return "";
+
+  const maxTokens = getModelMaxTokens(modelName);
+  const pct = Math.min(usage.inputTokens / maxTokens, 1);
+  const pctStr = (pct * 100).toFixed(1);
+
+  const barWidth = 26;
+  const filled = Math.round(pct * barWidth);
+  const empty = barWidth - filled;
+  const barColor = getBarColor(pct);
+  const bar =
+    chalk.hex(barColor)("█".repeat(filled)) + chalk.dim("░".repeat(empty));
+
+  const usedStr = formatTokenCount(usage.inputTokens);
+  const maxStr = formatTokenCount(maxTokens);
+  const label = chalk.hex("#A78BFA")("⏣");
+
+  return `  ${label} ${chalk.dim("context")} ${chalk.bold(usedStr)}${chalk.dim("/")}${chalk.dim(maxStr)} ${chalk.dim(`(${pctStr}%)`)}  ${bar}`;
 }

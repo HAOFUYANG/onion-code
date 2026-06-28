@@ -12,6 +12,8 @@ import {
   type InputContext,
   toolLog,
   toolLogLines,
+  renderTokenBar,
+  getModelMaxTokens,
 } from "./style.js";
 import {
   querySessions,
@@ -74,10 +76,10 @@ program
     const input = message.join(" ");
     process.stdout.write(userEcho(input));
     process.stdout.write(assistantPrefix());
-    const spinner = ora({ text: "思考中...", indent: 2 }).start();
+    const spinner = ora({ text: "thinking...", indent: 2 }).start();
     try {
       let fullText = "";
-      await runAgentStream(input, (token) => {
+      const { usage } = await runAgentStream(input, (token) => {
         if (spinner.isSpinning) spinner.stop();
         fullText += token;
       });
@@ -85,6 +87,12 @@ program
         width: process.stdout.columns ?? 80,
       });
       process.stdout.write(rendered + "\n");
+
+      // token 用量条
+      const modelName = process.env.OPENAI_MODEL ?? "deepseek-v4-flash";
+      const tokenLine = renderTokenBar(usage, modelName);
+      if (tokenLine) process.stdout.write(tokenLine + "\n\n");
+      else process.stdout.write("\n");
     } catch (err) {
       if (spinner.isSpinning) spinner.stop();
       process.stdout.write("\n");
@@ -164,8 +172,7 @@ async function startInteractiveChat() {
     // 监听 ESC 键（ASCII 27 = 0x1b）
     stdin.resume();
     if (stdin.isTTY) stdin.setRawMode(true);
-
-    const spinner = ora({ text: "思考中...", indent: 2 }).start();
+    const spinner = ora({ text: "thinking...", indent: 2 }).start();
 
     const onData = (data: Buffer) => {
       if (data[0] === 0x1b && !abortController.signal.aborted) {
@@ -186,7 +193,7 @@ async function startInteractiveChat() {
         spacing: "single",
       });
 
-      await runAgentStream(
+      const result = await runAgentStream(
         userInput,
         (token: string) => {
           if (firstToken) {
@@ -226,6 +233,7 @@ async function startInteractiveChat() {
           }
         },
       );
+      const usage = result.usage;
       if (firstToken) {
         // 无 token 输出（空响应或被中断）
         spinner.stop();
@@ -236,6 +244,26 @@ async function startInteractiveChat() {
       if (finalTail) process.stdout.write(finalTail);
       lastResponseMs = Date.now() - startMs;
       messageCount++;
+
+      // token 用量条
+      process.stdout.write("\n");
+      const tokenLine = renderTokenBar(usage, modelName);
+      if (tokenLine) process.stdout.write(tokenLine + "\n");
+
+      // 上下文窗口接近上限时警告
+      if (usage && usage.inputTokens > 0) {
+        const maxTokens = getModelMaxTokens(modelName);
+        const pct = usage.inputTokens / maxTokens;
+        if (pct >= 0.8) {
+          const warning = [
+            `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 占用已达")} ${chalk.bold.yellow((pct * 100).toFixed(0) + "%")}`,
+            `  ${chalk.dim("  大模型接口限制接近上限，即将压缩 Context ，可能丢失信息")}`,
+            `  ${chalk.dim("  建议输入")} ${chalk.cyan("/new")} ${chalk.dim("命令开启新会话")}`,
+          ].join("\n");
+          process.stdout.write(warning + "\n");
+        }
+      }
+
       process.stdout.write("\n\n");
     } finally {
       if (spinner.isSpinning) spinner.stop();

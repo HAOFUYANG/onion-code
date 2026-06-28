@@ -94,6 +94,13 @@ export const agent = createAgent({
   checkpointer,
 });
 
+// ── Token 用量 ──────────────────────────────────────────
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
 /**
  * 以流式方式运行 agent，将 token 逐个回调给调用方
  * @param {string} userMessage - 当前用户输入（历史已由 checkpointer 自动续接）
@@ -101,7 +108,7 @@ export const agent = createAgent({
  * @param {string} threadId    - 会话 ID，相同 ID 自动续上历史记录
  * @param {AbortSignal} [signal] - 可选的取消信号，可用于 ESC 中断
  * @param {Function} [onToolCall] - 工具调用回调 (toolName: string, args: Record<string, any>) => void
- * @returns {Promise<string>}  完整的 AI 回复文本
+ * @returns {Promise<{ text: string; usage: TokenUsage | null }>}  完整 AI 回复 + token 用量
  */
 export async function runAgentStream(
   userMessage: string,
@@ -109,7 +116,7 @@ export async function runAgentStream(
   threadId: string = "default-session",
   signal?: AbortSignal,
   onToolCall?: (toolName: string, args: Record<string, any>) => void,
-): Promise<string> {
+): Promise<{ text: string; usage: TokenUsage | null }> {
   const config = {
     configurable: { thread_id: threadId },
     recursionLimit: 100,
@@ -121,6 +128,7 @@ export async function runAgentStream(
   );
 
   let fullResponse = "";
+  let usage: TokenUsage | null = null;
   // 累积 tool_call_chunks，因为参数可能分多个 chunk 到达
   const toolCallAccumulator = new Map<string, { name: string; args: string }>();
 
@@ -158,7 +166,10 @@ export async function runAgentStream(
     }
 
     // 检测 tool 消息（工具执行完成），此时触发 onToolCall
-    if (typeof message._getType === "function" && message._getType() === "tool") {
+    if (
+      typeof message._getType === "function" &&
+      message._getType() === "tool"
+    ) {
       if (onToolCall && toolCallAccumulator.size > 0) {
         for (const [, { name, args }] of toolCallAccumulator) {
           if (name) {
@@ -174,7 +185,22 @@ export async function runAgentStream(
         toolCallAccumulator.clear();
       }
     }
+
+    // 捕获 token 用量（LangChain >0.3 在末 chunk 的 usage_metadata 中返回）
+    const um = (message as any).usage_metadata;
+    if (um && typeof um === "object") {
+      const input = um.input_tokens ?? um.inputTokens ?? 0;
+      const output = um.output_tokens ?? um.outputTokens ?? 0;
+      const total = um.total_tokens ?? um.totalTokens ?? 0;
+      if (input > 0 || output > 0 || total > 0) {
+        usage = {
+          inputTokens: input,
+          outputTokens: output,
+          totalTokens: total,
+        };
+      }
+    }
   }
 
-  return fullResponse;
+  return { text: fullResponse, usage };
 }
