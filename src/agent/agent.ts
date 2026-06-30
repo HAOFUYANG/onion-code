@@ -26,7 +26,9 @@ import {
   webSearchTool,
   webFetchTool,
   loadSkillTool,
+  maybePersistedOutput,
 } from "./tools.js";
+import { toolLog } from "./style.js";
 import path from "node:path";
 import fs from "node:fs";
 import dotenv from "dotenv";
@@ -87,7 +89,7 @@ const model = new ChatOpenAI({
   model: process.env.OPENAI_MODEL ?? "deepseek-v4-flash",
   apiKey: process.env.OPENAI_API_KEY,
   configuration: {
-    baseURL: "https://api.deepseek.com/v1",
+    baseURL: process.env.OPENAI_BASE_URL ?? "https://api.deepseek.com/v1",
   },
   streaming: true,
   modelKwargs: {
@@ -162,10 +164,34 @@ async function modelRequest(
 
   if (state.contextSummary != null && state.lastCompressedIndex > 0) {
     // 压缩路径：摘要 + 从压缩边界开始的最近消息（含本轮用户输入）
+    // slice 后可能以孤立的 ToolMessage 开头（其 AIMessage 已被截掉），
+    // 跳过它们以避免 LangChain 抛出 "tool messages must be a response to a preceding message with tool_calls"
+    const recentMessages = state.messages.slice(state.lastCompressedIndex);
+    // 收集 slice 中所有 AIMessage 的 tool_call_id
+    const knownToolCallIds = new Set<string>();
+    for (const m of recentMessages) {
+      if (isAIMessage(m) && m.tool_calls?.length) {
+        for (const tc of m.tool_calls) {
+          if (tc.id) knownToolCallIds.add(tc.id);
+        }
+      }
+    }
+    // 跳过开头没有对应 AIMessage 的孤立 ToolMessage
+    const firstNonOrphan = recentMessages.findIndex(
+      (m) =>
+        m.getType() !== "tool" ||
+        (m as ToolMessage).tool_call_id === "" ||
+        knownToolCallIds.has((m as ToolMessage).tool_call_id),
+    );
+    const safeRecent =
+      firstNonOrphan > 0
+        ? recentMessages.slice(firstNonOrphan)
+        : recentMessages;
+
     inputMessages = [
       new SystemMessage(systemPrompt),
       new SystemMessage(`[上下文摘要]\n${state.contextSummary}`),
-      ...state.messages.slice(state.lastCompressedIndex),
+      ...safeRecent,
     ];
   } else {
     // 正常路径：llmInputMessages 优先（供未来 preprocess 使用），否则用 messages
@@ -224,6 +250,7 @@ async function toolNode(
   const outputs = await Promise.all(
     pendingCalls.map(async (call) => {
       const tool = tools.find((t) => t.name === call.name);
+      console.log(toolLog(call.name), JSON.stringify(call.args));
       try {
         if (!tool) {
           throw new Error(`未找到工具 "${call.name}"。`);
@@ -232,8 +259,10 @@ async function toolNode(
           { ...call, type: "tool_call" },
           config,
         );
-        const content =
-          typeof output === "string" ? output : JSON.stringify(output);
+        const content = maybePersistedOutput(
+          typeof output === "string" ? output : JSON.stringify(output),
+          call.id ?? "",
+        );
         return new ToolMessage({
           content,
           tool_call_id: call.id ?? "",
@@ -348,7 +377,10 @@ export async function runAgentStream(
 
   let fullResponse = "";
   let usage: TokenUsage | null = null;
-  const toolCallAccumulator = new Map<string, { name: string; args: string }>();
+  const toolCallAccumulator = new Map<
+    string,
+    { name: string; argsParts: string[] }
+  >();
 
   for await (const chunk of stream as any) {
     if (signal?.aborted) break;
@@ -389,21 +421,21 @@ export async function runAgentStream(
         const index = tc.index ?? 0;
         const existing = toolCallAccumulator.get(String(index));
         const name = tc.name ?? existing?.name ?? "";
-        const args = (existing?.args ?? "") + (tc.args ?? "");
-        toolCallAccumulator.set(String(index), { name, args });
+        const parts = [...(existing?.argsParts ?? []), tc.args ?? ""];
+        toolCallAccumulator.set(String(index), { name, argsParts: parts });
       }
     }
   }
 
   // 流结束后触发 tool call 回调
   if (onToolCall && toolCallAccumulator.size > 0) {
-    for (const [, { name, args }] of toolCallAccumulator) {
+    for (const [, { name, argsParts }] of toolCallAccumulator) {
       if (name) {
         let parsedArgs: Record<string, any> = {};
         try {
-          parsedArgs = args ? JSON.parse(args) : {};
+          parsedArgs = argsParts.join("") ? JSON.parse(argsParts.join("")) : {};
         } catch {
-          // args 可能不完整
+          // 拼接后仍可能因 chunk 边界不完整导致解析失败，忽略
         }
         onToolCall(name, parsedArgs);
       }

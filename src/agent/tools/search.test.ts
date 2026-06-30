@@ -1,30 +1,18 @@
 import { describe, it, expect, vi } from "vitest";
+
+// Mock @langchain/tavily — construct mock manually
+vi.mock("@langchain/tavily", () => ({
+  TavilySearch: vi.fn().mockImplementation(function (this: any, _opts?: any) {
+    this.invoke = vi.fn().mockResolvedValue("Mock search result");
+  }),
+}));
+
 import { searchTool } from "./search.js";
 
 describe("searchTool", () => {
-  it("should return foggy weather when query contains 'sf'", async () => {
-    const result = await searchTool.invoke({ query: "weather in SF" });
-    expect(result).toBe("It's 60 degrees and foggy.");
-  });
-
-  it("should return foggy weather when query contains 'san francisco'", async () => {
-    const result = await searchTool.invoke({ query: "San Francisco weather" });
-    expect(result).toBe("It's 60 degrees and foggy.");
-  });
-
-  it("should return foggy weather when query is only 'sf'", async () => {
-    const result = await searchTool.invoke({ query: "sf" });
-    expect(result).toBe("It's 60 degrees and foggy.");
-  });
-
-  it("should return sunny weather for queries not mentioning SF", async () => {
-    const result = await searchTool.invoke({ query: "weather in New York" });
-    expect(result).toBe("It's 90 degrees and sunny.");
-  });
-
-  it("should return sunny weather for empty query", async () => {
-    const result = await searchTool.invoke({ query: "" });
-    expect(result).toBe("It's 90 degrees and sunny.");
+  it("should return search results from Tavily", async () => {
+    const result = await searchTool.invoke({ query: "test query" });
+    expect(result).toBe("Mock search result");
   });
 
   it("should reject invoke with missing query field", async () => {

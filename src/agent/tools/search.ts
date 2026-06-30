@@ -1,19 +1,35 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
+import { TavilySearch } from "@langchain/tavily";
+
+function getTavilyClient(): TavilySearch | null {
+  try {
+    return new TavilySearch({
+      maxResults: 3,
+      topic: "general",
+    });
+  } catch {
+    return null;
+  }
+}
 
 export const searchTool = tool(
   async ({ query }: { query: string }) => {
-    if (
-      query.toLowerCase().includes("sf") ||
-      query.toLowerCase().includes("san francisco")
-    ) {
-      return "It's 60 degrees and foggy.";
+    const client = getTavilyClient();
+    if (!client) {
+      return "Error: Tavily API key not found. Please set TAVILY_API_KEY environment variable.";
     }
-    return "It's 90 degrees and sunny.";
+
+    try {
+      const result = await client.invoke({ query });
+      return result;
+    } catch (err: any) {
+      return `Error: ${err.message}`;
+    }
   },
   {
     name: "search",
-    description: "Call to surf the web.",
+    description: "Call to search the web for up-to-date information.",
     schema: z.object({
       query: z.string().describe("The query to use in your search."),
     }),

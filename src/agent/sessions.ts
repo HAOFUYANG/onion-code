@@ -40,6 +40,40 @@ export interface SessionRow {
   time: string;
 }
 
+// ── 提取 user 消息内容（兼容两种序列化格式） ─────────────────
+function extractUserContent(value: Buffer | string): string {
+  try {
+    const raw = typeof value === "string" ? value : value.toString("utf-8");
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return "";
+
+    for (const m of parsed) {
+      // 旧格式: { role: "user", content: "..." }
+      if (m.role === "user" && m.content) {
+        return String(m.content);
+      }
+      // 新格式 (constructor): { id: [..., "HumanMessage"], kwargs: { content: "..." } }
+      if (
+        m.type === "constructor" &&
+        Array.isArray(m.id) &&
+        m.id[2] === "HumanMessage"
+      ) {
+        return String(m.kwargs?.content ?? "");
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
+// ── 判断 value 是否为 user 消息（用于 SQL 筛选） ───────────────
+function isUserMessage(value: Buffer | string): boolean {
+  // SQLite UDF 太重，这里用字符串预判 — 两种格式都匹配
+  const raw = typeof value === "string" ? value : value.toString("utf-8");
+  return raw.includes('"role":"user"') || raw.includes("HumanMessage");
+}
+
 // ── 校验 thread_id 是否存在 ─────────────────────────────────
 export function threadExists(threadId: string): boolean {
   const dbPath = path.join(getDataDir(), "checkpointer.db");
@@ -64,71 +98,63 @@ export function querySessions(limit = 20): SessionRow[] {
   const db = new Database(dbPath, { readonly: true });
 
   try {
-    // 每个 thread 取最早那条 user 消息（first checkpoint_id），
-    // 按最近活跃（max checkpoint_id）倒序排列
-    const rows = db
+    // 先查出所有不同的 thread_id（按最近活跃排序），不用 SQL LIKE 过滤
+    // 因为 SQL 字符串匹配无法覆盖两种序列化格式，改用 JS 层过滤
+    const threadRows = db
       .prepare(
         `
-      SELECT
-        w.thread_id,
-        w.checkpoint_id,
-        w.value
+      SELECT DISTINCT w.thread_id
       FROM writes w
-      INNER JOIN (
-        SELECT thread_id, MIN(checkpoint_id) AS first_cp
-        FROM writes
-        WHERE channel = 'messages'
-          AND CAST(value AS TEXT) LIKE '%"role":"user"%'
-        GROUP BY thread_id
-      ) first ON first.thread_id = w.thread_id
-              AND first.first_cp = w.checkpoint_id
-              AND w.channel = 'messages'
+      WHERE w.channel = 'messages'
       ORDER BY (
         SELECT MAX(checkpoint_id) FROM writes
-        WHERE thread_id = w.thread_id
+        WHERE thread_id = w.thread_id AND channel = 'messages'
       ) DESC
       LIMIT ?
     `,
       )
-      .all(limit) as {
-      thread_id: string;
-      checkpoint_id: string;
-      value: Buffer | string;
-    }[];
+      .all(limit * 3) as { thread_id: string }[];
 
-    return rows.map((row) => {
-      // 提取 user 输入内容
-      let lastQuestion = "";
-      try {
-        const raw =
-          typeof row.value === "string"
-            ? row.value
-            : row.value.toString("utf-8");
-        const parsed = JSON.parse(raw);
-        // value 是数组，取第一个 role=user 的 content
-        if (Array.isArray(parsed)) {
-          const userMsg = parsed.find((m: any) => m.role === "user");
-          if (userMsg) lastQuestion = String(userMsg.content ?? "");
-        }
-      } catch {
-        lastQuestion = "";
+    const results: SessionRow[] = [];
+
+    for (const { thread_id } of threadRows) {
+      if (results.length >= limit) break;
+
+      // 查这个 thread 的第一条 user 消息
+      const allRows = db
+        .prepare(
+          `SELECT w.checkpoint_id, w.value
+         FROM writes w
+         WHERE w.thread_id = ? AND w.channel = 'messages'
+         ORDER BY w.checkpoint_id ASC`,
+        )
+        .all(thread_id) as { checkpoint_id: string; value: Buffer | string }[];
+
+      // 找第一条 user 消息
+      for (const row of allRows) {
+        if (!isUserMessage(row.value)) continue;
+
+        const lastQuestion = extractUserContent(row.value)
+          .slice(0, 50)
+          .replace(/\n/g, " ");
+        const finalQuestion =
+          lastQuestion.length >= 50
+            ? lastQuestion.slice(0, 50) + "…"
+            : lastQuestion;
+
+        const ms = uuidv7ToMs(row.checkpoint_id);
+        const time = ms ? relativeTime(ms) : "-";
+
+        results.push({
+          threadId: thread_id,
+          lastQuestion: finalQuestion || "(空)",
+          time,
+        });
+        break; // 只取第一条 user 消息
       }
+    }
 
-      // 截取前 50 字
-      if (lastQuestion.length > 50) {
-        lastQuestion = lastQuestion.slice(0, 50) + "…";
-      }
-
-      // 从 checkpoint_id (UUIDv7) 提取时间
-      const ms = uuidv7ToMs(row.checkpoint_id);
-      const time = ms ? relativeTime(ms) : "-";
-
-      return {
-        threadId: row.thread_id,
-        lastQuestion: lastQuestion || "(空)",
-        time,
-      };
-    });
+    return results;
   } finally {
     db.close();
   }

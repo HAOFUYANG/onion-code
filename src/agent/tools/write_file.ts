@@ -11,7 +11,7 @@ export const writeFileTool = tool(
 
     // 安全检查：确保路径没有逃逸到当前目录之外
     const relative = path.relative(cwd, resolved);
-    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    if (relative.startsWith("..") || path.isAbsolute(filename)) {
       return `Error: Cannot write files outside the current directory.`;
     }
 

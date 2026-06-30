@@ -1,6 +1,6 @@
 import { tool } from "@langchain/core/tools";
 import { z } from "zod";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -8,12 +8,12 @@ import { hasDangerousApi } from "./security.js";
 
 function isNodeAvailable(): boolean {
   try {
-    execSync("node --version", {
+    const result = spawnSync("node", ["--version"], {
       encoding: "utf-8",
       timeout: 5_000,
-      stdio: "pipe",
+      shell: false,
     });
-    return true;
+    return result.status === 0;
   } catch {
     return false;
   }
@@ -43,14 +43,27 @@ export const runJsTool = tool(
     try {
       fs.writeFileSync(tmpFile, code, "utf-8");
 
-      const output = execSync(`node "${tmpFile}"`, {
+      const result = spawnSync("node", [tmpFile], {
         cwd: process.cwd(),
         timeout: 15_000,
         encoding: "utf-8",
         maxBuffer: 1024 * 512,
+        shell: false,
       });
 
-      return output || "(code completed with no output)";
+      if (result.error) {
+        const error = result.error as NodeJS.ErrnoException;
+        if (error.code === "ETIMEDOUT") {
+          return "Error: Code execution timed out after 15 seconds.";
+        }
+        return `Error: ${error.message}`;
+      }
+
+      if (result.status !== 0) {
+        return `Error: ${result.stderr || result.stdout || `Node.js exited with code ${result.status}`}`;
+      }
+
+      return result.stdout || "(code completed with no output)";
     } catch (err: any) {
       if (err.stderr) {
         return `Error: ${err.stderr}`;

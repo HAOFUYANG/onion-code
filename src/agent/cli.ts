@@ -10,8 +10,6 @@ import {
   assistantPrefix,
   userEcho,
   type InputContext,
-  toolLog,
-  toolLogLines,
   renderTokenBar,
   getModelMaxTokens,
 } from "./style.js";
@@ -108,6 +106,38 @@ program.parse(process.argv);
 
 // ────────────────────────────────────────────────────────────
 
+// ── 共享：Context 压缩并输出 ──────────────────────────
+async function performCompression(threadId: string): Promise<void> {
+  const compressSpinner = ora({
+    text: "正在压缩 Context...",
+    indent: 2,
+  }).start();
+
+  const result = await compressAgentContext(threadId);
+
+  compressSpinner.stop();
+
+  if (result.compressed) {
+    process.stdout.write(
+      `  ${chalk.hex("#10B981")("✓")}  ${chalk.green("Context 已压缩")} — 已保留最近 ${result.keepRecent} 条消息（${chalk.cyan("第" + result.compressionCount + "次")}）\n`,
+    );
+
+    if (result.compressionCount >= 3) {
+      process.stdout.write(
+        `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("已压缩 3 次，强烈建议")} ${chalk.cyan("/new")} ${chalk.yellow("开启新会话")}\n`,
+      );
+    }
+  } else if (result.error) {
+    process.stdout.write(
+      `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 压缩失败")}: ${result.error}\n`,
+    );
+  } else {
+    process.stdout.write(
+      `  ${chalk.dim("ℹ")}  ${chalk.gray("无需压缩，当前消息量较少")}\n`,
+    );
+  }
+}
+
 async function startInteractiveChat() {
   let threadId: string = randomUUID();
   let messageCount = 0;
@@ -137,36 +167,7 @@ async function startInteractiveChat() {
         `\n  ${chalk.dim("⏪")} 已切换到历史会话 ${chalk.cyan(threadId)}\n`,
       );
     },
-    compressContext: async () => {
-      const compressSpinner = ora({
-        text: "正在压缩 Context...",
-        indent: 2,
-      }).start();
-
-      const result = await compressAgentContext(threadId);
-
-      compressSpinner.stop();
-
-      if (result.compressed) {
-        console.log(
-          `  ${chalk.hex("#10B981")("✓")}  ${chalk.green("Context 已压缩")} — 已保留最近 ${result.keepRecent} 条消息（${chalk.cyan("第" + result.compressionCount + "次")}\n`,
-        );
-
-        if (result.compressionCount >= 3) {
-          console.log(
-            `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("已压缩 3 次，强烈建议")} ${chalk.cyan("/new")} ${chalk.yellow("开启新会话")}\n`,
-          );
-        }
-      } else if (result.error) {
-        console.log(
-          `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 压缩失败")}: ${result.error}\n`,
-        );
-      } else {
-        console.log(
-          `  ${chalk.dim("ℹ")}  ${chalk.gray("无需压缩，当前消息量较少")}\n`,
-        );
-      }
-    },
+    compressContext: () => performCompression(threadId),
     showHelp: () => {
       const terminalWidth = process.stdout.columns || 80;
       const divider = chalk.hex("#7C3AED")(
@@ -237,7 +238,7 @@ async function startInteractiveChat() {
         },
         threadId,
         abortController.signal,
-        (toolName: string, args: Record<string, any>) => {
+        (_toolName: string, _args: Record<string, any>) => {
           // 工具调用前 flush streamer 残留内容，然后重建
           const tail = streamer.finish();
           if (tail) process.stdout.write(tail);
@@ -245,22 +246,6 @@ async function startInteractiveChat() {
             render: (md) => renderMarkdown(md, { width: termWidth }),
             spacing: "single",
           });
-
-          const detail =
-            args.command ??
-            args.code ??
-            args.query ??
-            args.url ??
-            args.filename ??
-            args.skillName;
-          const lines = args.code ? String(args.code).split("\n").length : 0;
-          if (lines > 0) {
-            process.stdout.write(toolLogLines(toolName, lines));
-          } else {
-            process.stdout.write(
-              toolLog(toolName, detail ? String(detail) : undefined),
-            );
-          }
         },
       );
       const usage = result.usage;
@@ -285,31 +270,7 @@ async function startInteractiveChat() {
         const maxTokens = getModelMaxTokens(modelName);
         const pct = usage.inputTokens / maxTokens;
         if (pct >= 0.8) {
-          const compressSpinner = ora({
-            text: "正在压缩 Context...",
-            indent: 2,
-          }).start();
-
-          const result = await compressAgentContext(threadId);
-
-          compressSpinner.stop();
-
-          if (result.compressed) {
-            process.stdout.write(
-              `  ${chalk.hex("#10B981")("✓")}  ${chalk.green("Context 已压缩")} — 已保留最近 ${result.keepRecent} 条消息（${chalk.cyan("第" + result.compressionCount + "次")}）\n`,
-            );
-
-            if (result.compressionCount >= 3) {
-              process.stdout.write(
-                `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("已压缩 3 次，强烈建议")} ${chalk.cyan("/new")} ${chalk.yellow("开启新会话")}\n`,
-              );
-            }
-          } else if (result.error) {
-            process.stdout.write(
-              `  ${chalk.hex("#F59E0B")("⚠")}  ${chalk.yellow("Context 压缩失败，下次对话仍使用完整历史")}\n`,
-            );
-          }
-          // compressed=false 且无 error → 无需压缩（如 toCompress 为空）
+          await performCompression(threadId);
         }
       }
 

@@ -3,6 +3,7 @@ import { z } from "zod";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_RESPONSE_SIZE = 1024 * 512; // 512KB
+const MAX_REDIRECTS = 5;
 
 function isValidUrl(url: string): boolean {
   try {
@@ -31,14 +32,40 @@ export const webFetchTool = tool(
     const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
     try {
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (compatible; OnionCode/1.0; +https://github.com/onioncode)",
-        },
-        redirect: "follow",
-      });
+      // 手动处理重定向以限制次数
+      let response: Response;
+      let redirectCount = 0;
+      {
+        let currentUrl: string | URL = url;
+        while (true) {
+          response = await fetch(currentUrl, {
+            signal: controller.signal,
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (compatible; OnionCode/1.0; +https://github.com/onioncode)",
+            },
+            redirect: "manual",
+          });
+
+          // 3xx 状态码且带 Location 头时手动重定向
+          if (
+            response.status >= 300 &&
+            response.status < 400 &&
+            response.headers.has("location")
+          ) {
+            if (redirectCount >= MAX_REDIRECTS) {
+              return `Error: Too many redirects (max ${MAX_REDIRECTS}).`;
+            }
+            // 解析相对 URL
+            const location = response.headers.get("location")!;
+            currentUrl = new URL(location, currentUrl).toString();
+            response.body?.cancel(); // Node.js 17.3+ 支持
+            redirectCount++;
+            continue;
+          }
+          break;
+        }
+      }
 
       if (!response.ok) {
         return `Error: HTTP ${response.status} ${response.statusText}`;

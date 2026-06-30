@@ -19,6 +19,11 @@ interface PythonEnvironmentResult {
 
 let cachedPythonPath: string | null = null;
 
+/** 清除缓存的 Python 路径（当 venv 被重建或切换 config 后调用） */
+export function clearPythonCache(): void {
+  cachedPythonPath = null;
+}
+
 function run(command: string, args: string[], timeout = 30_000) {
   return spawnSync(command, args, {
     cwd: process.cwd(),

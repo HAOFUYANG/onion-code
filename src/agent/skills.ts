@@ -49,11 +49,21 @@ function getSkillsDir(): string {
   return primary;
 }
 
+// ── 技能缓存 ────────────────────────────────────────────
+let cachedSkills: SkillInfo[] | null = null;
+
+/** 清除技能缓存（新增/删除 skill 目录后调用） */
+export function invalidateSkillCache(): void {
+  cachedSkills = null;
+}
+
 /**
  * 遍历 skills 目录下所有子目录，读取每个 SKILL.md 的 name 和 description。
  * 返回 SkillInfo 数组（每项包含 name, description, dir）。
+ * 结果被缓存，可通过 invalidateSkillCache() 清除。
  */
 export function discoverSkills(): SkillInfo[] {
+  if (cachedSkills) return cachedSkills;
   const skillsDir = getSkillsDir();
   const results: SkillInfo[] = [];
 
@@ -82,6 +92,7 @@ export function discoverSkills(): SkillInfo[] {
     }
   }
 
+  cachedSkills = results;
   return results;
 }
 
